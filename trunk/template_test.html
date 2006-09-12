@@ -1,0 +1,52 @@
+<html>
+<head>
+   <meta http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
+   <title>Suave Test</title>
+   
+   <script type="text/javascript" src="debug.js" > </script>
+   <script type="text/javascript" src="parse/lexerGenerator.js" > </script>
+   <script type="text/javascript" src="play.js" > </script>
+   <script type="text/javascript" src="templates.js" > </script>
+   <script type="text/javascript" src="duvelacky.js" > </script>
+   <script type="text/javascript" src="parse/lexerGenerator.js" > </script>
+   
+   <script type="text/javascript">
+   <!--
+      var compile = function()
+      {
+         var e_in  = window.document.getElementById("in")
+         var e_out = window.document.getElementById("out")
+         var parser = new SuaveParser(e_in.value)
+         e_out.value = parser.js_source;
+      }
+      var runit = function()
+      {
+         var e_func  = window.document.getElementById("out")
+         var e_res = window.document.getElementById("evaled")
+         var evaled = eval('(' + e_func.value + ')')
+         var mydl = new DomDuvelacky()
+         mydl.generateHTML = evaled;
+         e_res.value = mydl.generateHTML();
+         mydl.writeInside(window.document.getElementById("play"))
+      }
+   // -->
+   </script>
+    
+</head>
+<body>
+<h1>Suave Templates Testing</h1>
+hjeloooooooooo
+   <p>
+<form>
+   <textarea id="in" name="insuave" style="width: 60em; height: 30em;">In</textarea>
+   <input type="button" onclick="compile()" value="compile" />
+   <textarea id="out" name="outsuave" style="width: 60em; height: 20em;">Out</textarea>
+   <input type="button" onclick="runit()" value="run" />
+   <textarea id="evaled" name="runsuave" style="width: 60em; height: 20em;">Out</textarea>
+</form>
+   </p>
+   
+   <div id="play"> this is the area with id #play where you can replace HTML and such</div>
+
+</body>
+</html>
