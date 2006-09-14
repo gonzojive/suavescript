@@ -1,0 +1,1 @@
+var MyDivView = function() {}
