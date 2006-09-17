@@ -10,11 +10,9 @@
    
    The provided sails infrastructure is lightweight, only providing common methods for manipulating
    HTML components.  These common features are the abilities to:
-      *insert raw HTML into a document
+      *insert raw HTML from a component into a document
       *include other components within a component
       *assign names to significant HTML elements within the component (e.g. title, authorlink)
-      
-      
       
    
    If you want to implement a multi-purpose TABLE sail, you could do so with the following steps:
@@ -33,68 +31,114 @@
    
    MyTable.prototype = HTMLSail.prototype; //inherit fromHTML Sail
    
-  
-   
-   
-   
 */
 
-//Constructor: YouCallThisFunction, YouOverrideThisFunction
-var Sail = function()
+Suave = { util : {}}
+//augments the first argument's properties with the other objects'
+//subsequent arguments' properites overwrite former arguments' properties
+//this can be shortcut for prototypal (ahem, all) inheritance schemes that batch inherit
+Suave.util.mixInto = function(obj /*...*/)
 {
-   this.dom = new Object();
+   for (var i=1; i < arguments.length; i++)
+   {
+      for (var key in arguments[i])
+         obj[key] = arguments[i][key]
+   }
+}
+
+var Sail = {}
+
+
+// Note: it is not necessary to implement a Controller, or to use this class at all
+// However, this class provides functionality that you will probably end up needing
+// if you implement any complex component system (with subcomponents, event listeners,
+// and complicated data in the 'model'
+Sail.Controller = function(view, model)
+{
+   //this.sub and this.parent both reference other Controller objects
+   //this.sub maps subcomponent group names to arrays of subcomponents
    this.sub = new Object();
+   //this.parent holds a reference to a parent controller
    this.parent = null;
-   
+   //the view and model associated with this controller
+   this.view = view
+   this.model = model
+}
+
+Sail.Controller.prototype = { }
+
+Sail.View = function(model)
+{
+   Log.msg("constructor of Sail.View called")
+   //this.model connects the view to the model being renderred
+   this.model = model
+}
+Sail.View.prototype = {
+   //YouOverrideThisFunction
+   paint : function(){}
+}
+
+
+//Constructor: YouCallThisFunction, YouOverrideThisFunction
+var HTMLSail = {}
+HTMLSail.View = function(model)
+{
+   Sail.View.call(this)
+   //this.dom maps field names to DOM nodes
+   this.dom = new Object();
+   //this.dom_ids maps field names to DOM ids.  this is used internally
    this.dom_ids = new Object();
 }
+HTMLSail.View.next_id_number = 1;
 
-//YouCallThisFunction (or write.inside, write.before, write.after, write.ceiling, write.floor
-Sail.prototype.renderHTML = function(htmlwriter, doc)
-{
-   Log.msg(this)
-   htmlwriter(this.generateHTML())
-   this.locateDomNodes(doc || window.document)
-   this.onWritten();
-}
-
-//YouCallThisFunction
-Sail.prototype.renderInside = function(elem)
-{
-   this.renderHTML(function(html) { elem.innerHTML = html; }, elem.ownerDocument) 
-}
-
-//YouOverrideThisFunction
-Sail.prototype.setup = function(){}
-
-//template help
-Sail.prototype.defField = function(name, id_val)
-{
-   this.dom_ids[name] = id_val || this.genIdFor(name)
-   return ' id="' + this.dom_ids[name] + '" '
-}
-
-
-// *** things that you don't use directly but aren't too tricky
-
-//genIdFor
-Sail.next_id_number = 1;
-Sail.prototype.genIdFor= function(name)
-{
-   var num = Sail.next_id_number++
-   if (!name)
-      return "duvelacky_anon" + num
-   else
-      return name + num
-}
-
-//finds all the named elements after they have been inserted
-Sail.prototype.locateDomNodes = function(doc)
-{
-   for (key in this.dom_ids)
-      this.dom[key] = doc.getElementById(this.dom_ids[key])
-}
-Sail.prototype.onWritten = function(){this.setup()}
+Suave.util.mixInto(HTMLSail.View.prototype,
+Sail.View.prototype, {
+   //YouCallThisFunction (or write.inside, write.before, write.after, write.ceiling, write.floor
+   renderHTML : function(htmlwriter, doc)
+   {
+      Log.msg(this)
+      htmlwriter(this.generateHTML())
+      this.locateDomNodes(doc || window.document)
+      this.onWritten();
+   },
+   
+   //YouCallThisFunction
+   renderInside : function(elem)
+   {
+      this.renderHTML(function(html) { elem.innerHTML = html; }, elem.ownerDocument) 
+   },
+   
+   //template help
+   defField : function(name, options)
+   {
+      this.dom_ids[name] = options.id || this.genIdFor(name)
+      Log.msg("DOM ID:" + this.dom_ids[name])
+      //return ' id="' + this.dom_ids[name] + '" ' this was the version used for embedding in templates
+      return this.dom_ids[name]
+   },
+   
+   
+   // *** things that you don't use directly but aren't too tricky
+   // half-'protected members'
+   
+   //dynamically generates an id for an element of the given name
+   genIdFor : function(name, options)
+   {
+      var num = HTMLSail.View.next_id_number++
+      if (!name)
+         return "anon" + num
+      else
+         return name + num
+   },
+   
+   //finds all the named elements after they have been inserted
+   locateDomNodes : function(doc)
+   {
+      for (key in this.dom_ids)
+         this.dom[key] = doc.getElementById(this.dom_ids[key])
+   },
+   onWritten : function(){ this.paint() }
+})
 
 
 //Model file
@@ -159,122 +203,3 @@ MyTableView.prototype = {
       return out;
    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-
-
-
-//duvelacky code
-
-
-/// XML PROCESSING ///
-var serializeNode, serializeChildren, duvelackyElement, compileDuvelackyXML;
-var serializeNode = function(node)
-{
-   return (new XMLSerializer()).serializeToString(node);
-}
-
-var serializeChildren = function(node)
-{
-   var serializer = new XMLSerializer();
-   var xmlstr = "";
-   for (var i=0; i<node.childNodes.length; i++)
-   {
-      var childnode = node.childNodes.item(i);
-      xmlstr += serializer.serializeToString(childnode);
-   }
-   return xmlstr;
-}
-
-var duvelackyElement = function(node, id_function)
-{
-   for (var i=0; i < node.attributes.length; i++)
-   {
-      var attrib_name = node.attributes[i].nodeName
-      if (attrib_name == "suaveName")
-      {
-         var attrib_val = node.attributes[i].nodeValue
-         this.ids[attrib_val] = id_function(attrib_val)
-         node.setAttribute("id", this.ids[attrib_val])
-         node.removeAttribute(attrib_name)
-         Log.msg("suave name appeared and removed.  assigned ID " + this.ids[attrib_val])
-      }
-   }
-}
-
-var compileDuvelackyXML = function(xml_string_buffer)
-{
-   xml_string_buffer = "<ExcludedRoot>" + xml_string_buffer + "</ExcludedRoot>"
-   var doc = (new DOMParser()).parseFromString(xml_string_buffer, "text/xml")
-   
-   var rt = doc.documentElement
-   for (var i=0; i < rt.childNodes.length; i++)
-   {
-      var node = rt.childNodes[i]
-      if (node.nodeType == 1) //elements
-      {
-         duvelackyElement.call(this, node, function() { return "m" + Math.random(); });
-      }
-   }
-   
-   return serializeChildren(rt);
-}
-
-var doTestIO = function(input)
-{
-   var context = {ids: {}}
-   return compileDuvelackyXML.call(context, input);
-}
-
-
-/**
-   A DomDuvelacky is intended to be the simplest possible
-   general purpose component definition mechanism.  It is intended
-   to help separate application scripts with tedious or repetitive
-   layout management.  Its goals:
-      *definition of components in HTML + some JS template markup
-         (although a straight XML version shouldn't be too difficult
-         to conjure up)
-      *ability to include components in other components, which
-      may be anonymous, named, or grouped
-         (these components are accessed via
-         yourduvelacky.sub.NAME)
-      
-      *do everything transparently with no overly clever blackmagic
-      or unclear implementation details
-      
-      
-   DomDuvelacky properties
-   dom: contains the named DOM nodes for this duvelacky. for example,
-        if you are defining a special dialog box, mydialog.dom.ok could
-        hold the DOM element for the OK button of the dialog
-*/

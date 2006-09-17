@@ -9,6 +9,10 @@ module SailsXML
     include(REXML::StreamListener)
     def ostr ; @ostr; end
     def js_var_name ;  @jsvar ; end
+    def output_linebreaks? ; true ; end
+    def linebreak
+      output_linebreaks? ? "\n" : ""
+    end
     
     JSON_ESCAPED = {
        "\010" =>  '\b',
@@ -19,9 +23,9 @@ module SailsXML
        '"' =>     '\"',
        '\\' =>    '\\\\'
     }
-    #I don't believe this yet works for all characters
+    #I don't believe this works yet for all characters
     def escape_javascript(javascript)
-      return gsub(/[\010\f\n\r\t"\\]/) { |s|
+      return javascript.gsub(/[\010\f\n\r\t"\\]/) { |s|
           JSON_ESCAPED[s]
         }
     end  
@@ -41,7 +45,7 @@ module SailsXML
     
     def jsexprout(str)
       if @last_out_type == :jsexpr
-        ostr << "+" + str
+        ostr << "+#{linebreak}" + str
       else
         ostr << "\n" + js_var_name + "+=" + str
       end
@@ -62,9 +66,19 @@ module SailsXML
       @just_did_starttag = false
     end
     
+    def str2js_str(str)
+      str.nil? ? "null" : '"'+escape_javascript(str)+'"'
+    end
+    
+    def hash2js_str(hash)
+      return 'null' if hash.nil?
+      "{" + hash.keys.map {|key| "#{key} : " + str2js_str(hash[key]) }.join(',') + "}"
+    end
+    
     def tag_start(name, attrs)
       tagstr = "<" + name
       idexpr = Hash.new
+      idexpr[:options] = Hash.new
       attrs.each do |attr|
         case attr[0]
           when /suaveField/i
@@ -72,8 +86,12 @@ module SailsXML
           when /suaveRoot/i
             idexpr[:root] = attr[1]
             idexpr[:name] = "root"
+          when /suaveInsertion/i
+            idexpr[:options][:insertion] = attr[1]
+          when /suaveInsertionGroup/i
+            idexpr[:options][:insertion_group] = attr[1]
           when /id/i
-            idexpr[:id] = attr[1]
+            idexpr[:options][:id] = attr[1]
             tagstr += " #{attr[0]}=\"#{attr[1]}\""
           else
             tagstr += " #{attr[0]}=\"#{attr[1]}\""
@@ -84,9 +102,9 @@ module SailsXML
       if idexpr.has_key?(:name)
         jsout ' id="'
         expr = "this.defField(\""+escape_javascript(idexpr[:name]) +'"'
-        expr += ',"'+escape_javascript(idexpr[:id])+'"' if idexpr.has_key?(:id)
-        expr += ')'
+        expr += ','+hash2js_str(idexpr[:options]) + ')'
         jsexprout expr
+        jsout '"'
       end
       @just_did_starttag = true
     end
@@ -110,6 +128,9 @@ module SailsXML
       ostr << "\n"
     end
     
+  end
+  
+  class SyntaxException < Exception
   end
   
 end

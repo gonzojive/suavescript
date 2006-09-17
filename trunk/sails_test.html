@@ -3,16 +3,9 @@
    <meta http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
    <title>Suave Test</title>
    
-   <script type="text/javascript" src="debug.js" > </script>
-   <script type="text/javascript" src="parse/lexerGenerator.js" > </script>
-   <script type="text/javascript" src="play.js" > </script>
-   <script type="text/javascript" src="templates.js" > </script>
-   <script type="text/javascript" src="duvelacky.js" > </script>
-   <script type="text/javascript" src="sails.js" > </script>
-   <script type="text/javascript" src="parse/lexerGenerator.js" > </script>
-   
    <script type="text/javascript">
    <!--
+      var sails = new Object()
       var runit = function()
       {
          var e_in  = window.document.getElementById("in")
@@ -21,20 +14,27 @@
          var writer = function(html) { window.document.getElementById("play").innerHTML = html; }
          mydl.renderHTML(writer)
       }
+      var callme = function()
+      {
+         (new sails.MyTableController()).create("play")
+      }
    // -->
    </script>
+   <script type="text/javascript" src="debug.js" > </script>
+   <script type="text/javascript" src="parse/lexerGenerator.js" > </script>
+   <script type="text/javascript" src="play.js" > </script>
+   <script type="text/javascript" src="templates.js" > </script>
+   <script type="text/javascript" src="duvelacky.js" > </script>
+   <script type="text/javascript" src="vendor/prototype.js" > </script>
+   <script type="text/javascript" src="sails.js" > </script>
+   <script type="text/javascript" src="examples/sails/funling/funling.built.js" > </script>
+   <script type="text/javascript" src="examples/sails/my_table/my_table.built.js" > </script>
+   <script type="text/javascript" src="parse/lexerGenerator.js" > </script>
+   
     
 </head>
-<body>
-<h1>Suave Templates Testing</h1>
-hjeloooooooooo
-   <p>
-<form>
-   <textarea id="in" name="insuave" style="width: 60em; height: 30em;">In</textarea>
-   <input type="button" onclick="runit()" value="run" />
-   <textarea id="out" name="runsuave" style="width: 60em; height: 20em;">Out</textarea>
-</form>
-   </p>
+<body onload="callme()">
+<h1>Suave Sails Testing</h1>
    
    <div id="play"> this is the area with id #play where you can replace HTML and such</div>
 
