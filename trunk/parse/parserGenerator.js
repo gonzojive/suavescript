@@ -1,3 +1,4 @@
+ // http://www.navyrain.net/compilergeneratorinjavascript/
  /*
   * Parser - Given a grammar and a lexer, parses a input string and returns a parse tree
   *
