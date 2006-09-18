@@ -1,4 +1,4 @@
-
+// http://www.navyrain.net/compilergeneratorinjavascript/
 /*
  * Lexer - Creates a lexer based upon the regular 
  * expressions, tokens, and functions given.
