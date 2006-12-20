@@ -1,0 +1,4 @@
+<% view_name = @classname + "View" %>
+var <%= view_name %> = sails.<%= view_name %> = function()
+{ HTMLSail.View.call(this); }
+mergeInto(sails.<%= view_name %>.prototype, HTMLSail.View.prototype)
