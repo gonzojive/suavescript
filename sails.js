@@ -30,10 +30,10 @@
    }
    
    MyTable.prototype = HTMLSail.prototype; //inherit fromHTML Sail
-   
 */
 
 Suave = { util : {}}
+sails = new Object();
 //augments the first argument's properties with the other objects'
 //subsequent arguments' properites overwrite former arguments' properties
 //this can be shortcut for prototypal (ahem, all) inheritance schemes that batch inherit
@@ -57,19 +57,89 @@ Sail.Controller = function(view, model)
 {
    //this.sub and this.parent both reference other Controller objects
    //this.sub maps subcomponent group names to arrays of subcomponents
-   this.sub = new Object();
+   this.sub = {__inlines : new Array() }
    //this.parent holds a reference to a parent controller
    this.parent = null;
    //the view and model associated with this controller
    this.view = view
    this.model = model
+   if (this.view)
+   {
+      var controller = this
+      this.view.performInclusion = function(subname, sub_constructor)
+      {
+	 controller.sub[subname] = controller.sub[subname] || sub_constructor()
+	 //Log.msg(controller);
+	 var markup = controller.sub[subname].view.generateHTML()
+	 controller.sub.__inlines.push(controller.sub[subname])
+	 return markup;
+      }
+   }
 }
 
-Sail.Controller.prototype = { }
+Suave.util.mixInto(
+   Sail.Controller.prototype,
+   {
+      addSubsail : function(sub_sail, groupname)
+      {
+	 groupname = groupname || "children"
+	 if (!this.sub[groupname])
+	    this.sub[groupname] = this.formSubGroup(groupname)
+	 this.sub[groupname].insertSail(sub_sail)
+      },
+      insertFromGroupname : function(groupname)
+      {
+	 var opts = this.view.dom_opts[groupname]
+	 var ins_loc = opts && opts.insertionLocation;
+	 ins_loc = ins_loc || "bottom";
+	 ins_loc = ins_loc[0].toUpperCase() + ins_loc.substr(1)
+	 return Insertion[ins_loc]	 
+      },
+      formSubGroup : function(groupname, insert_func, sort_func, remove_func)
+      {
+	 var group = new Array();
+	 group.insertion_elem = this.view.dom[groupname] || this.view.dom.root
+	 var orig_elem_inserter = this.insertFromGroupname(groupname)
+	 group.sailsSorter = sort_func;
+	 group.insertSail = insert_func || function(comp)
+	 {
+	    var insertion_elem = this.insertion_elem;
+	    //1. push component onto element group
+	    //2. sort sails
+	    //3. write the new sail's html
+	    //      -after the previous sail if one exists
+	    //      -before the next sail if one exists
+	    //      -else at the bottom of the insertion function
+	    this.push(comp)
+	    if (this.sailsSorter)
+	       this.sort(this.sailsSorter);
+	    var insert_index = this.indexOf(comp)
+	    //3.
+	    var html_writer; var self = this;
+	    if (this.length == 1)
+	       html_writer = function(html) { new orig_elem_inserter(insertion_elem, html); }
+	    else if (insert_index == 0)
+	       html_writer = function(html) { new Insertion.Before(self[1].view.getFirstNode(), html) }
+	    else
+	       html_writer = function(html) { new Insertion.After(self[insert_index - 1].view.getLastNode(), html) }
+	    comp.create(html_writer)
+	 }
+	 //TODO remover is not refined
+	 group.removeSail = remove_func || function(comp) {  comp.destroy(); }
+	 return group
+      },
+      create : function(writer)
+      {
+	 this.view.renderHTML(writer);
+	 this.sub.__inlines.each(function(sub_controller) { sub_controller.view.afterWrite()})
+      },
+      destroy : function() {},
+      setParent : function(parent) { this.parent = parent;}
+   })
 
 Sail.View = function(model)
 {
-   Log.msg("constructor of Sail.View called")
+   //Log.msg("constructor of Sail.View called")
    //this.model connects the view to the model being renderred
    this.model = model
 }
@@ -88,6 +158,7 @@ HTMLSail.View = function(model)
    this.dom = new Object();
    //this.dom_ids maps field names to DOM ids.  this is used internally
    this.dom_ids = new Object();
+   this.dom_opts = {};
 }
 HTMLSail.View.next_id_number = 1;
 
@@ -96,10 +167,14 @@ Sail.View.prototype, {
    //YouCallThisFunction (or write.inside, write.before, write.after, write.ceiling, write.floor
    renderHTML : function(htmlwriter, doc)
    {
-      Log.msg(this)
+      //Log.msg(this)
       htmlwriter(this.generateHTML())
+      this.afterWrite();
+   },
+   afterWrite : function(doc)
+   {
       this.locateDomNodes(doc || window.document)
-      this.onWritten();
+      this.onWritten();      
    },
    
    //YouCallThisFunction
@@ -112,15 +187,17 @@ Sail.View.prototype, {
    defField : function(name, options)
    {
       this.dom_ids[name] = options.id || this.genIdFor(name)
-      Log.msg("DOM ID:" + this.dom_ids[name])
-      //return ' id="' + this.dom_ids[name] + '" ' this was the version used for embedding in templates
+      // if a root is not specified, it's good to specify
+      // the first and last nodes so that insertion can work ok
+      if (options.first)
+	 this.getFirstNode = function() { return this.dom[name]; };
+      if (options.last)
+	 this.getLastNode = function() { return this.dom[name]; };
+      this.dom_opts[name] = options
       return this.dom_ids[name]
    },
-   
-   
    // *** things that you don't use directly but aren't too tricky
    // half-'protected members'
-   
    //dynamically generates an id for an element of the given name
    genIdFor : function(name, options)
    {
@@ -137,69 +214,10 @@ Sail.View.prototype, {
       for (key in this.dom_ids)
          this.dom[key] = doc.getElementById(this.dom_ids[key])
    },
-   onWritten : function(){ this.paint() }
+   onWritten : function(){ this.paint() },
+   getFirstNode : function() { return this.dom.root; },
+   getLastNode : function() { return this.dom.root; }
 })
 
-
-//Model file
-
-var Matrix = function(x, y)
-{
-   //this is a simple matrix that is not exapandable whose elements may be
-   //addressed by yourmatrix[5][7]
-   for (var i=0; i < x; i++)
-      this[i] = new Array(y); 
-}
-//Matrix.prototype.item = function(x,y) { return this[x][y] }
-
-var MyTableModel = function(numcols, numrows)
-{
-   Matrix.constructor.call(this, numcols, numrows) //act as a matrix
-}
-
-MyTableModel.prototype = {
-   getItem : function(col, row) { return this[col][row] },
-   setItem : function(col, row, value) { this[col][row] = value; }
-}
-
-//Controller file
-MyTableController = function()
-{
-}
-
-//View File
-MyTableView = function(model)
-{
-   this.model = model
-}
-MyTableView.prototype = {
-   //htmlwriter is a function of the form function(html) that should be called to write
-   //html to the desired position within a document.  win is the window we're rendering to
-   renderHTML : function(htmlwriter, win)
-   {
-      win = win || window
-      doc = win.document
-      htmlwriter(this.generateHTML())
-      this.dom = {
-         root : doc.getElementById("rootling")
-      }
-   },
-   generateHTML : function()
-   {
-      var out = '';
-      out += '<table id="rootling">'
-      for (var i=0; i < 10; i++)
-      {
-         out += '<tr>'
-         for (var j=0; j < 10; j++)
-         {
-            out += '<td>'
-            out += '(' + i + ',' + j + ')'
-            out += '</td>'
-         }
-         out += '</tr>'
-      }
-      out += '</table>'
-      return out;
-   }
-}
+/*
+*/

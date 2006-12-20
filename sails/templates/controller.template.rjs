@@ -1,3 +1,4 @@
+/*
 <% contr_name = @classname + "Controller" %>
 sails.<%= contr_name %> = function()
 {
@@ -12,4 +13,4 @@ sails.<%= contr_name %>.prototype = {
       //this.view.renderHTML(function(html) { elem.innerHTML = html; })
       Event.observe(this.view.dom.form, "submit",  this.onFormSubmit.bind(this), false);
    }
-}
+}*/

@@ -5,11 +5,29 @@ require "rexml/streamlistener"
 require "rexml/document"
 
 module SailsXML
+  #this class find the last tag in the XML stream
+  #that is at the most basic level
+  class LastRootTagStreamListener
+    include(REXML::StreamListener)
+    attr_reader :count, :last_root_index
+    def initialize
+      @count = 0
+      @tag_depth = 0
+    end
+    def tag_start(name, attrs)
+      @last_root_index = @count if @tag_depth == 0
+      @tag_depth = @tag_depth + 1 #increase tag depth on encountering a start tag
+      @count = @count + 1
+    end
+    def tag_end(name)
+      @tag_depth = @tag_depth - 1 #decrease on end tag
+    end
+  end
   class SailsXMLStreamListener
     include(REXML::StreamListener)
     def ostr ; @ostr; end
     def js_var_name ;  @jsvar ; end
-    def output_linebreaks? ; true ; end
+    def output_linebreaks? ; nil ; end
     def linebreak
       output_linebreaks? ? "\n" : ""
     end
@@ -30,10 +48,13 @@ module SailsXML
         }
     end  
     
-    def initialize(js_out_var, strm = $stdout)
+    def initialize(js_out_var, strm = $stdout, last_root_index = nil)
+      puts "Index of Last Tag: #{last_root_index}"
       @ostr = strm
       @jsvar = js_out_var
       @last_out_type = :jsexpr
+      @current_tag_index = 0
+      @last_root_index = last_root_index # index of the last root tag in the stream
       ostr << "#{js_var_name}=" + '""'
     end
     
@@ -79,18 +100,24 @@ module SailsXML
       tagstr = "<" + name
       idexpr = Hash.new
       idexpr[:options] = Hash.new
+      idexpr[:options][:first] = "true" if @current_tag_index == 0
+      idexpr[:options][:last] = "true" if @current_tag_index == @last_root_index
       attrs.each do |attr|
         case attr[0]
-          when /suaveField/i
+          when /^suaveField$/i
             idexpr[:name] = attr[1]
-          when /suaveRoot/i
+          when /^suaveRoot$/i
             idexpr[:root] = attr[1]
             idexpr[:name] = "root"
-          when /suaveInsertion/i
+          when /^suaveFirst$/i
+            idexpr[:options][:first] = attr[1]
+          when /^suaveLast$/i
+            idexpr[:options][:last] = attr[1]
+          when /^suaveInsertion$/i
             idexpr[:options][:insertion] = attr[1]
-          when /suaveInsertionGroup/i
-            idexpr[:options][:insertion_group] = attr[1]
-          when /id/i
+          when /^suaveInsertionLocation$/i
+            idexpr[:options][:insertionLocation] = attr[1]
+          when /^id$/i
             idexpr[:options][:id] = attr[1]
             tagstr += " #{attr[0]}=\"#{attr[1]}\""
           else
@@ -99,6 +126,15 @@ module SailsXML
       end
       
       jsout tagstr
+      if !idexpr.has_key?(:name)
+        if idexpr[:options].has_key?(:first) && idexpr[:options].has_key?(:last)
+          idexpr[:name] = "root"
+        elsif idexpr[:options].has_key?(:last)
+          idexpr[:name] = "anonLast"
+        elsif idexpr[:options].has_key?(:first)
+          idexpr[:name] = "anonFirst"
+        end
+      end
       if idexpr.has_key?(:name)
         jsout ' id="'
         expr = "this.defField(\""+escape_javascript(idexpr[:name]) +'"'
@@ -107,6 +143,7 @@ module SailsXML
         jsout '"'
       end
       @just_did_starttag = true
+      @current_tag_index =  @current_tag_index +1
     end
     def tag_end(name)
       
