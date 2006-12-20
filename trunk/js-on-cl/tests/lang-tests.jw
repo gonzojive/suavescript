@@ -1,0 +1,630 @@
+/// lang-tests.jw
+//
+// Contains unit tests written in jwacs.
+// Run the tests by running the `runTests` function.
+// A DOM element with the id 'testOutput' is assumed to exist.
+
+// The main entry-point for the test suite
+function runTests()
+{
+	var passed = 0;
+	var failed = 0;
+	
+	// TODO: Maybe we want an "addTest" function that gets called at the toplevel and this
+	// function can just loop over a global or something.
+  try
+  {
+    runTest("factorial/1", factorial(5), 120);
+    runTest("factorial/2", accFactorial(6, 1), 720);
+    runTest("factorial/3", accFactorial(6), 720);
+    runTest("multishot/1", testMultiShotContinuations(), 50);
+    runTest("suspend/1", testSuspend(), true);
+    runTest("suspend/2", suspendBeforeSettingToTrue, false);
+    runTest("for-in/1", smooshObject({a:10, b:20, c:30}), "abc=60");
+    runTest("for/1", matrixReduce([[10, 20, 30], [10, 20, 30]]), 120);
+    runTest("for/2", matrixReduce([]), 0);
+    runTest("for/3", matrixReduce([[10, 20], [1]]), null);
+    runTest("for/4", negativeOddSum(4), 10);
+    runTest("for/5", negativeOddSum(5), -15);
+    runTest("for-in/2", sumWords([]), 0);
+    runTest("switch/1", wordToNumber("one"), 1);
+    runTest("switch/2", wordToNumber("two"), 2);
+    runTest("switch/3", isNaN(sumWords(["hi", "zero", "ten"])), true);
+    runTest("switch/4", sumWords(["one", "three", "ten"]), 14);
+    runTest("resume/1", fetchValue(32), 32);
+    runTest("new/1", testCpsNew(), true);
+    runTest("new/2", testCpsManyArgNew(), true);
+    runTest("new/3", testBuiltinNew(), true);
+    runTest("new/4", testNewReturn(17), 17);
+    runTest("this/1", testThisShadowingDecls(), true);
+    runTest("this/2", testThisShadowingExprs(), true);
+    runTest("arguments/1", testArgumentsShadowingDecls(), true);
+    runTest("arguments/2", testArgumentsShadowingExprs(), true);
+    runTest("globalVar/1", reportElm(0), 'one');
+    runTest("short-circuit-and/1", testShortCircuitAnd(), true);
+    runTest("short-circuit-and/2", poit, true);
+    runTest("toplevel/resume/1", kWasCaptured, true);
+    runTest("try-catch/1", throwInTry(true), "from catch");
+    runTest("try-catch/2", throwInTry(false), "from try");
+    runTest("try-catch/3", testNestedThrows(2), 4);
+    runTest("try-catch/4", tailReturnFromNestedTry(10), 10);
+    runTest("try-catch/5", testNativeThrows(), true);
+    runTest("try-catch/6", globalContainsCaughtHello, "hello");
+    runTest("try-catch/7", testCatchOfTailCall(54), 54);
+    runTest("try-catch/8", throwIntoContinuation(), true);
+    runTest("strip-var-decls/1", regressionTestStripSimpleInitialization(), true);
+    runTest("strip-var-decls/2", stripVarsInSerialTry(), true);
+    runTest("throw/1", throwReenteredThroughContinuation(), true);
+  }
+  catch(ex)
+  {
+    failed++;
+    var exText = ex.description ? ex.description : ex;
+    outputLine(bold("... exception: ") + red(exText));
+  }
+  
+  output("<hr>");
+	outputLine(bold("Ran " + (passed + failed) + " tests"));
+	outputLine(bold(passed) + " tests passed");
+	outputLine(bold(failed) + " tests failed");
+
+  //TODO replace with a version that catches the errors
+	function runTest(testName, actualValue, expectedValue)
+	{
+    if(actualValue == expectedValue)
+    {
+      outputLine(testName + " passed");
+      passed++;
+    }
+    else
+    {
+      outputLine(red(bold(testName + " FAILED")));
+      outputLine("... expected " + bold(expectedValue) + ", got " + bold(actualValue));
+      failed++;
+    }
+  }
+}
+
+/// ======= Test utilities ===================================================================
+// Functions to support the unit tests
+
+function bold(str)
+{
+	return "<b>" + str + "</b>";
+}
+
+function red(str)
+{
+	return "<span style='color:red;'>" + str + "</span>";
+}
+
+function outputLine(line)
+{
+	output(line + "<br>");
+}
+
+function output(string, warningP)
+{
+	//TODO use prototype's $() function instead
+	var elm = document.getElementById('testOutput');
+	var outputHTML = elm.innerHTML;
+	if(warningP)
+		outputHTML += "<b style='color:red;'>";
+	outputHTML += string;
+	if(warningP)
+		outputHTML += "</b>";
+		
+	elm.innerHTML = outputHTML;
+}
+		
+
+/// ======= Test functions ===================================================================
+// The actual functions being tested
+
+var globalContainsCaughtHello = null;
+try
+{
+  var nil = null;
+  nil.foo();
+}
+catch(e)
+{
+  globalContainsCaughtHello = 'hello';
+}
+
+function reportElm(idx)
+{
+  return globalArray[idx];
+}
+
+function kcapture(done)
+{
+  if(done)
+    return null;
+  else
+    return function_continuation;
+}
+
+var k = null;
+var kWasCaptured = false;
+
+k = kcapture(kWasCaptured);
+
+if(k != null)
+{
+  kWasCaptured = true;
+  resume k <- null;
+}
+else
+  k = null;
+
+var narf = "hello";
+function testShortCircuitAnd()
+{
+  if(narf && narf.charAt(0) == 'h')
+    return true;
+}
+
+var poit = narf && narf.charAt(0) == 'h';
+
+var globalArray = new Array('one', 'two');
+
+function factorial(n)
+{
+	if(n == 0)
+		return 1;
+	else
+		return n * factorial(n - 1);
+}
+
+function accFactorial(n, acc)
+{
+	if(!acc)
+		return accFactorial(n, 1);
+		
+	if(n == 0)
+		return acc;
+	else
+		return accFactorial(n - 1, n * acc);
+}
+
+var savedK = null;
+function testMultiShotContinuations()
+{
+  var x = 0;
+  x += saveK();
+  if(savedK != null)
+  {
+    var k = savedK;
+    savedK = null;
+    resume k <- 40;
+  }
+  return x;
+}
+
+function saveK()
+{
+  savedK = function_continuation;
+  return 10;
+}
+
+function testSuspend()
+{
+  outputLine("[running testSuspend, testing will pause for 1.5 seconds]");
+  savedK = function_continuation;
+  setTimeout(restoreSavedK, 1500);
+  suspend;
+}
+
+function restoreSavedK()
+{
+  var localK = savedK;
+  savedK = null;
+  resume localK <- true;
+}
+
+function smooshObject(obj)
+{
+  var concatKey = "";
+  var sumVal = 0;
+  for(var key in obj)
+  {
+    concatKey += key;
+    sumVal += obj[key];
+  }
+
+  resume function_continuation <- concatKey + "=" + sumVal;
+}
+
+function matrixReduce(m)
+{
+  var previousRowLength = null;
+  var sum = 0;
+  for(var i = 0; i < m.length; i++)
+  {
+    if(previousRowLength == null)
+      previousRowLength = m[i].length;
+    else
+    {
+      if(previousRowLength != m[i].length)
+        return null;
+    }
+
+    for(var j = 0; j < m[i].length; j++)
+      sum += m[i][j];
+  }
+
+  return sum;
+}
+
+function sumWords(wordArray)
+{
+  var total = 0;
+  for(word in wordArray)
+  {
+    var n = wordToNumber(wordArray[word]);
+    total += n;
+  }
+  return total;
+}
+
+function wordToNumber(word)
+{
+  switch(word.toLowerCase())
+  {
+  case "ten":
+    return 10;
+  case "nine":
+    return 9;
+  case "eight":
+    return 8;
+  case "seven":
+    return 7;
+  case "six":
+    return 6;
+  case "five":
+    return 5;
+  case "four":
+    return 4;
+  case "three":
+    return 3;
+  case "two":
+    return 2;
+  case "one":
+    return 1;
+  case "zero":
+    return 0;
+  default:
+    return Number.NaN;
+  }
+}
+
+function negativeOddSum(upTo)
+{
+  var result = 0;
+  if(upTo % 2 == 0)
+    for(var i = 0; i <= upTo; i++)
+      result += i;
+  else
+    for(var i = 0; i <= upTo; i++)
+      result -= i;
+
+  return result;
+}
+
+function fetchValue(value)
+{
+  var cc = function_continuation;
+  setTimeout(function() { resume cc <- value; }, 50);
+  suspend;
+}
+
+function CtorWithFetch(argValue)
+{
+  this.arg = fetchValue(argValue);
+}
+
+function testCpsNew()
+{
+  var obj = new CtorWithFetch(55);
+  return obj.arg == 55;
+}
+
+function testCpsManyArgNew()
+{
+  var obj = new CtorWithFetch('a', 1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7);
+  return obj.arg == 'a';
+}
+
+function testBuiltinNew()
+{
+  var obj1 = new Number(123);
+  var obj2 = new String('hello');
+  var obj = obj2 + obj1;
+  return obj == "hello123";
+}
+
+function testNewReturn(val)
+{
+  return new Number(val);
+}
+
+function testThisShadowingDecls()
+{
+  function PrivateCtor(x)
+  {
+    this.field = fetchValue(x);
+  }
+
+  var obj = new PrivateCtor(23);
+  return obj.field == 23;
+}
+
+function testThisShadowingExprs()
+{
+  function PrivateCtor(x)
+  {
+    this.field = fetchValue(x);
+  }
+
+  PrivateCtor.prototype.incr = function(delta) {
+    this.field += fetchValue(delta);
+  };
+
+  var obj = new PrivateCtor(10);
+  obj.incr(100);
+
+  return obj.field == 110;
+}
+
+function testArgumentsShadowingDecls()
+{
+  function fcn(a, b, c)
+  {
+    var x = fetchValue(arguments[0]);
+    var y = fetchValue(arguments[1]) + fetchValue(arguments[2]);
+
+    return x + y + arguments.length;
+  }
+
+  return (fcn(10, 20, 30) == 63);
+}
+
+function testArgumentsShadowingExprs()
+{
+  var ret =
+    (function(a, b, c) {
+      var x = fetchValue(arguments[0]);
+      var y = fetchValue(arguments[1]) + fetchValue(arguments[2]);
+      
+      return x + y + arguments.length;
+    })(10, 20, 30);
+  
+  return (ret == 63);
+}
+
+function throwInTry(shouldThrow)
+{
+  try
+  {
+    if(shouldThrow)
+      throw "from catch";
+    return "from try";
+  }
+  catch(e)
+  {
+    return e;
+  }
+}
+
+function testNestedThrows(n)
+{
+  try
+  {
+    var x = n;
+    try
+    {
+      throw x;
+    }
+    catch(e)
+    {
+      throw e + 1;
+    }
+  }
+  catch(e)
+  {
+    return e + 1;
+  }
+
+  return null;
+}
+
+function tailReturnFromNestedTry(n)
+{
+  function id(val)
+  {
+    return val;
+  }
+  
+  try
+  {
+    try
+    {
+      return id(n);
+    }
+    catch(e)
+    {
+      throw e;
+    }
+  }
+  catch(e)
+  {
+    throw e;
+  }
+}
+
+function testNativeThrows()
+{
+  var target = null;
+  try
+  {
+    target.foo();
+    return false;
+  }
+  catch(e)
+  {
+    return true;
+  }
+}
+
+function testCatchOfTailCall(n)
+{
+  try
+  {
+    return willThrow(n);
+  }
+  catch(e)
+  {
+    return e.value;
+  }
+}
+
+function willThrow(n)
+{
+  throw {value: n};
+}
+
+var suspendBeforeSettingToTrue  = false;
+suspend;
+suspendBeforeSettingToTrue = true;
+alert("you should never see this");
+
+function regressionTestStripSimpleInitialization()
+{
+  var monthOK = true;
+  var day = 100;
+  function lastDay()
+  {
+    return 30;
+  }
+  
+  if(monthOK && (day < 1 || day > lastDay()))
+    return true;
+  return false;
+}
+
+function throwIntoContinuation()
+{
+  var k;
+  function throwsIntoK()
+  {
+    k = function_continuation;
+    setTimeout(function() {
+                 throw 42 -> k;
+               }, 25);
+    suspend;
+  }
+
+  try
+  {
+    throwsIntoK();
+    return false;
+  }
+  catch(e)
+  {
+    return e == 42;
+  }
+}
+
+function throwReenteredThroughContinuationValue()
+{
+  var k;
+  var total = 0;
+  
+  function someFun()
+  {
+    k = function_continuation;
+    return 1;
+  }
+  
+  try
+  {
+    throw someFun();
+  }
+  catch(e)
+  {
+    total += e;
+    if(k)
+    {
+      var localK = k;
+      k = null;
+      resume localK <- 2;
+    }
+  }
+
+  return total == 3;
+}
+
+function throwReenteredThroughContinuation()
+{
+  var k;
+  var total = 0;
+  
+  function someFun()
+  {
+    k = function_continuation;
+    return 1;
+  }
+  
+  try
+  {
+    throw someFun();
+  }
+  catch(e)
+  {
+    total += e;
+    if(k)
+    {
+      var localK = k;
+      k = null;
+      resume localK <- 2;
+    }
+  }
+
+  return total == 3;
+}
+
+function stripVarsInSerialTry()
+{
+  try
+  {
+    var http = new XMLHttpRequest;
+    if(http)
+      return true;
+  }
+  catch(e)
+  { }
+
+  try
+  {
+    http = new ActiveXObject("Msxml2.XMLHTTP");
+    if(http)
+      return true;
+  }
+  catch(e)
+  { }
+
+  try
+  {
+    http = new ActiveXObject('Microsoft.XMLHTTP');
+    if(http)
+      return true;
+  }
+  catch(e)
+  { }
+
+  throw "Cannot create a suitable http request object";
+}
+
+
+  

@@ -1,0 +1,18 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <title>Counter example</title>
+  <style type='text/css'>
+    #counter
+    {
+      font-family: Garamond, Times, Serif;
+      font-size: 72pt;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+<div id='contentDiv'><i>Loading...</i></div>
+<@ jwacs_imports @>
+</body>
+ </html>
