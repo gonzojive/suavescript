@@ -1,0 +1,17 @@
+// TrivialHttpRequest.jw
+//
+// Demonstrates the motivating XMLHttpRequest usage pattern.  Note that
+// JwascLib.fetchData appears synchronous (eg, returns a usable value), but is
+// actually using an asynchronous XMLHttpRequest request.
+//
+// All this example does is synchronously fetch the data stored in "datarows.txt"
+// and output it to the browser window.
+
+import "../lib/jwacs-lib.jw";
+
+function main()
+{
+  document.getElementById('contentDiv').innerHTML = '<pre>' + JwacsLib.fetchData('GET', 'dataRows.txt') + '</pre>';
+}
+
+main();

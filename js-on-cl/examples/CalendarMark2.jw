@@ -1,0 +1,1040 @@
+//// CalendarMark2.jw
+///
+/// A client-based implemenetation of a simple web-calendar in jwacs.
+import "/lib/prototype.js";
+import "/lib/effects.js";
+import "/lib/dragdrop.js";
+import "/lib/jwacs-lib.jw";
+// import "CalendarMark2Config.js"; // This must never be combined, so we manually put the tag
+                                    // into the template file.
+
+JwacsLib.initHistory();
+
+//======= main program =============================================================================
+
+function main(args)
+{
+  var date = new Date;
+
+  if(!isNaN(args.month))
+    date.setMonth(args.month - 1);
+  if(!isNaN(args.year))
+    date.setYear(args.year);
+
+  var year = date.getFullYear();
+  var month = date.getMonth();
+  
+  showCalendarScreen(year, month);
+}
+
+function showCalendarScreen(year, month)
+{
+  document.title = monthNames[month] + " " + year;
+
+  var contentDiv = document.createElement("DIV");
+  contentDiv.id = "contentDiv";
+  
+  contentDiv.innerHTML = "<h2 id='monthTitle'>" + monthNames[month] + " " + year + "</h2>";
+  contentDiv.appendChild(calcNavigationLinksElement(year, month));
+  contentDiv.appendChild(calcMonthElement(year, month));
+  contentDiv.appendChild(calcNavigationLinksElement(year, month));
+  contentDiv.appendChild(calcBottomControlsElement(year, month));
+  
+  var oldDiv = $('contentDiv');
+  oldDiv.parentNode.replaceChild(contentDiv, oldDiv);
+
+  // Figure out the start and end days of this month's rectangle
+  var s = new Date(year, month, 1);
+  while(s.getDay() != 0)
+    s.setDate(s.getDate() - 1);
+  var e = new Date(year, month, lastDay(year, month));
+  while(e.getDay() != 6)
+    e.setDate(e.getDate() + 1);
+    
+  var events = readEvents(s, e);
+  for(var i = 0; i < events.length; i++)
+    showEvent(events[i], true);
+
+  // Make all the day cells droppable
+  var handlerSpec = { onDrop: eventDropped };
+  for(var d = new Date(s.getTime()); d.getTime() <= e.getTime(); d.setDate(d.getDate() + 1))
+    Droppables.add(dateToStr(d), handlerSpec);
+}
+
+// Unpacks a server response.  If the server has returned an error, it will be
+// thrown as an exception.  Otherwise the CSV response rows will be converted
+// into an Array of Objects.
+function unpackResponse(text)
+{
+  if(text == null || text == undefined || text.length == 0 || text.match(/^[\s\r\n]*$/))
+    throw "Empty response from server";
+
+  var lines = text.split(/\r?\n/);
+
+  // First line is the status line
+  if(!lines || lines.length == 0)
+    throw text;
+  
+  if(!lines[0].match(/\s*OK\s*/))
+    throw lines[0];
+  
+	var result = new Array;
+  if(lines.length > 2)
+  {
+    // First post-status line holds the field names
+    var headings = lines[1].split(",");
+			
+    // Each subsequent row is an object
+    var i;
+    for(i = 2; i < lines.length; i++)
+    {
+      var line = lines[i];
+      var fields = line.split(",");
+      if(fields && fields.length > 0)
+      {
+        var obj = new Object;
+        for(var j = 0; j < fields.length; j++)
+        {
+          obj[unescape(headings[j])] = unescape(fields[j]);
+        }
+        result[result.length] = obj;
+      }
+    }
+  }
+  
+  return result;
+}
+
+function pad(num, width)
+{
+	var ret = new String(num);
+	
+	while(ret.length < width)
+		ret = "0" + ret;
+	
+	return ret;
+}
+
+//// ======= Date handling =========================================================================
+
+var dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function strToDate(str)
+{
+  try
+  {
+    var components = str.split("-");
+    var yyyy = new Number(components[0]);
+    var mm = new Number(components[1]);
+    var dd = new Number(components[2]);
+	
+    return new Date(yyyy, mm - 1, dd);
+  }
+  catch(e)
+  {
+    throw "error in strToDate(" + str + "):\n" + e;
+  }
+}
+
+function dateToStr(date)
+{
+	return date.getFullYear() + "-" + pad(date.getMonth() + 1, 2) + "-" + pad(date.getDate(), 2);
+}
+
+function equalDates(date1, date2)
+{
+	return date1.getFullYear() == date2.getFullYear() &&
+				 date1.getMonth() == date2.getMonth() &&
+				 date1.getDate() == date2.getDate();
+}
+
+/// Returns the last day of month `month` in year `year`.
+/// `month` should be 0-based.
+function lastDay(year, month)
+{
+	var now = new Date;
+	var yyyy = new Number(year);
+	var mm = new Number(month);
+	
+	if(isNaN(yyyy) || yyyy < 1901)
+		yyyy = now.getFullYear();
+		
+	if(isNaN(mm) || mm < 1 || mm > 12)
+		mm = now.getMonth() ;
+		
+	var dd = 28;
+	var testDate = new Date(yyyy, mm, dd);
+	while(testDate.getMonth() == mm)
+	{
+		dd++;
+		testDate = new Date(yyyy, mm, dd);
+	}
+	
+	return dd - 1;
+}
+
+// Number of rows required to display month
+function rowsRequired(year, month)
+{
+	var first = new Date(year, month, 1);
+  
+	// February
+	if(first.getMonth() == 1)
+	{
+		return 5;
+	}
+	
+	var last = new Date(first.getTime());
+	last.setDate(31);
+	
+	// 31-day months
+	if(last.getDate() == 31)
+	{
+		if(first.getDay() == 5 || first.getDay() == 6)
+			return 6;
+		else
+			return 5;
+	}
+	else
+	{
+		if(first.getDay() == 6)
+			return 6;
+		else
+			return 5;
+	}
+}
+
+//// ======= Drawing ===============================================================================
+
+function calcMonthNavigationCell(date, isRight)
+{
+  var cell = document.createElement("TD");
+  if(isRight)
+    cell.align = "right";
+  var link = document.createElement("A");
+  cell.appendChild(link);
+  link.className = "navLink";
+  link.href = "#year=" + date.getFullYear() + "&month=" + (date.getMonth() + 1);
+  link.onclick = function(evt) {
+    if(window.event) evt = window.event;
+    Event.stop(evt);
+    jump(date.getFullYear(), date.getMonth());
+  };
+
+  var text = monthNames[date.getMonth()] + " " + date.getFullYear();
+  if(isRight)
+    text += "---&gt;";
+  else
+    text = "&lt;--- " + text;
+  link.innerHTML = text;
+  
+  return cell;
+}
+
+function calcNavigationLinksElement(year, month)
+{
+  var table = document.createElement("TABLE");
+  //TODO Come on, shouldn't this be part of the CSS?
+  table.width = '90%';
+  table.align = 'center';
+  table.border = '0px';
+
+  var tbody = document.createElement("TBODY");
+  table.appendChild(tbody);
+  var row = document.createElement("TR");
+  tbody.appendChild(row);
+
+  row.appendChild(calcMonthNavigationCell(new Date(year, month - 1, 1)));
+  row.appendChild(calcMonthNavigationCell(new Date(year, month + 1, 1), true));
+
+  return table;
+}
+
+function calcBottomControlsElement(year, month)
+{
+  var table = document.createElement("TABLE");
+  table.width = '90%';
+  table.align = 'center';
+  table.border = '0px';
+
+  var tbody = document.createElement("TBODY");
+  table.appendChild(tbody);
+  var row = document.createElement("TR");
+  tbody.appendChild(row);
+  
+  var leftCell = document.createElement("TD");
+  row.appendChild(leftCell);
+  var link = document.createElement("A");
+  leftCell.appendChild(link);
+  link.className = "navLink";
+  link.onclick = function(evt) {
+    if(window.event) evt = window.event;
+    Event.stop(evt);
+    eventEdit(this);
+  };
+  link.href = "#op=addNewEvent&year=" + year + "&month=" + (month + 1) + "&day=1";
+  link.innerHTML = "Add new event";
+
+  var rightCell = document.createElement("TD");
+  row.appendChild(rightCell);
+  rightCell.align = "right";
+  var form = document.createElement("FORM");
+  rightCell.appendChild(form);
+  form.id = "jumpForm";
+  form.onsubmit = jumpFormSubmitted; //???
+  
+  var select = document.createElement("SELECT");
+  form.appendChild(select);
+  select.id = "jumpMonth";
+  select.onchange = jumpFormSubmitted;
+  for(var m = 0; m < 12; m++)
+  {
+    var option = document.createElement("OPTION");
+    select.appendChild(option);
+    option.value = m;
+    if(m == month)
+      option.selected = true;
+    option.innerHTML = monthNames[m];
+  }
+
+  var input = document.createElement("INPUT");
+  form.appendChild(input);
+  input.id = "jumpYear";
+  input.size = 4;
+  input.value = year;
+
+  return table;
+}
+
+function calcMonthElement(year, month)
+{
+  var table = document.createElement("TABLE");
+  table.align = "center";
+  table.id = "monthTable";
+
+  var tbody = document.createElement("TBODY");
+  table.appendChild(tbody);
+  
+  var row = 0;
+  var col = 0;
+
+  //// Headers
+  var headerRow = document.createElement("TR");
+  tbody.appendChild(headerRow);
+  for(col = 0; col < 7; col++)
+  {
+    var dayCell = document.createElement("TH");
+    dayCell.innerHTML = dayNames[col];
+    headerRow.appendChild(dayCell);
+  }
+
+	//// Cells
+
+  // Back up from the first day of the month to a Sunday
+  var d = new Date(year, month, 1);
+  while(d.getDay() != 0)
+  {
+    d.setDate(d.getDate() - 1);
+  }
+
+  // Generate the actual cells
+  var rowCount = rowsRequired(year, month);
+  for(row=0; row < rowCount; row++)
+	{
+    var rowElm = document.createElement("TR");
+    rowElm.className = "dataRow";
+    tbody.appendChild(rowElm);
+		for(col = 0; col < 7; col++)
+    {
+      rowElm.appendChild(calcDayElement(d, month));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
+  return table;
+}  
+
+function isMonthDay(elm)
+{
+  return (elm.className == "sameMonthDay" ||
+          elm.className == "otherMonthDay" ||
+          elm.className == "dayHeader");
+}
+
+function dayCellDoubleClicked(evt)
+{
+  if(window.event)
+    evt = window.event;
+  
+  // Only create a new event if the target element was actually a day cell,
+  // not just some other random element within the day cell.
+  if(isMonthDay(Event.element(evt)))
+    inPlaceAddEvent(this);
+}
+
+// Calculate a TD element that represents a day cell in the month table
+function calcDayElement(date, currentMonth)
+{
+  var cell = document.createElement("TD");
+  cell.id = dateToStr(date);
+  if(currentMonth == date.getMonth())
+    cell.className = "sameMonthDay";
+  else
+    cell.className = "otherMonthDay";
+
+  cell.ondblclick = dayCellDoubleClicked;
+
+  var dayHeader = document.createElement("DIV");
+  cell.appendChild(dayHeader);
+  dayHeader.className = "dayHeader";
+  if(equalDates(date, new Date))
+  {
+    var box = document.createElement("SPAN");
+    dayHeader.appendChild(box);
+    box.className = "todayDay";
+    box.innerHTML = date.getDate();
+  }
+  else
+    dayHeader.innerHTML = date.getDate();
+
+  return cell;
+}
+
+// Return true if `element` is displaced from its calculated position
+function isDisplaced(element)
+{
+  var left = 0;
+  var top = 0;
+
+  if(element.style.top)
+  {
+    var aMatch = element.style.top.match(/^-?(\d*)/);
+    if(aMatch)
+      top = aMatch[1];
+  }
+
+  if(element.style.left)
+  {
+    var aMatch = element.style.left.match(/^-?(\d*)/);
+    if(aMatch)
+      left = aMatch[1];
+  }
+
+  return (left != 0 || top != 0);
+}
+
+function showEvent(event, quiet)
+{
+  var eventID = 'event' + event.id;
+  var cellID = event.date;
+
+  var existing = $(eventID);
+  var target = $(cellID);
+
+  // If the event is currently visible, but its new date is not visible,
+  // then delete its element and bail.
+  if(existing && !target)
+  {
+    new Effect.Fade(existing);
+    waitForEffectQueue();
+    $(eventID).parentNode.removeChild($(eventID));
+    return;
+  }
+
+  // If neither the new nor the old dates are visible, then just bail.
+  if(!target)
+    return;
+  
+  // If we got this far, the target is definitely visible, and maybe there's an
+  // existing element kicking around somewhere.
+  var eventBox = document.createElement("DIV");
+  eventBox.className = "eventBox";
+  eventBox.id = eventID;
+  if(event.desc)
+    eventBox.innerHTML = event.desc.escapeHTML();
+  if(event.notes && event.notes.match(/\S/))
+    eventBox.title = event.notes;
+  eventBox.ondblclick = function(evt) {
+    if(window.event)
+      evt = window.event;       // IE compatibility
+    Event.stop(evt);
+    this._doubleClicked = true;
+    eventEdit(this);
+  };
+  eventBox.onclick = function(evt) {
+    // If we're displaced, then a drag is in progress
+    if(isDisplaced(this))
+      return;
+
+    // We need to make sure that we don't respond to a double-click, so we
+    // pause briefly and then check to see if the double-click handler has
+    // grabbed the event.
+    this._doubleClicked = false;
+    JwacsLib.sleep(250);
+    if(!this._doubleClicked)
+      inPlaceEditEvent(this);
+  };
+  
+  if(existing)
+  {
+    // Changing the event but staying in the same day
+    if(existing.parentNode.id == cellID)
+    {
+      existing.parentNode.replaceChild(eventBox, existing);
+      new Effect.Highlight(eventBox);
+    }
+
+    // Moving to a new day
+    else
+    {
+      var existingOffset = Position.cumulativeOffset(existing);
+      var targetOffset = Position.cumulativeOffset(target);
+      
+      existing.parentNode.removeChild(existing);
+      target.appendChild(eventBox);
+
+      Effect.Queues.get(eventBox.id);
+      
+      // Move is annoying after drag-n-drop
+      if(!quiet)
+      {
+        eventBox.style.left = (existingOffset[0] - targetOffset[0]) + "px";
+        eventBox.style.top = (existingOffset[1] - targetOffset[1])  + "px";
+        eventRevertEffect(eventBox, eventBox.id);
+      }
+      new Effect.Highlight(eventBox, {queue: {scope: eventBox.id, position: 'end'}});
+    }
+  }
+  else
+  {
+    // Showing a previously unshown event
+    Element.hide(eventBox);
+    target.appendChild(eventBox);
+    if(quiet)
+      new Effect.Appear(eventBox);
+    else
+    {
+      Element.show(eventBox);
+      new Effect.Highlight(eventBox);
+    }
+  }
+
+  new Draggable(eventID,
+                {scroll: window, revert: revertPredicate, reverteffect: eventRevertEffect,
+                 starteffect: eventStartEffect, endeffect:eventEndEffect});
+  return eventBox;
+}
+
+function addStatus(str)
+{
+  var statusDiv = $('StatusDisplay');
+  if(!statusDiv)
+    return;
+  
+  statusDiv.innerHTML = str.escapeHTML();
+  statusDiv.style.display = '';
+}
+
+function removeStatus(str)
+{
+  var statusDiv = $('StatusDisplay');
+  if(!statusDiv)
+    return;
+  
+  statusDiv.style.display = 'none';
+}
+
+function calcEventEditHtml(event)
+{
+  return JwacsLib.fetchData("GET", "CalendarMark2-EventEdit.html");
+}
+
+// ======= Server calls ============================================================================
+function serverCall(method, url, params, status)
+{
+  var currentStatus = status;
+  var q = url;
+  var connector = '?';
+  for(var field in params)
+  {
+    if(params[field] == undefined || typeof params[field] == 'function')
+      continue;
+    q += connector + field + "=" + escape(params[field]);
+    connector = '&';
+  }
+
+  try
+  {
+    addStatus(status);
+    var text = JwacsLib.fetchData(method, q);
+    currentStatus = null;
+    removeStatus(status);
+    return unpackResponse(text);
+  }
+  catch(e)
+  {
+    // Just passing through
+    if(currentStatus)
+      removeStatus(currentStatus);
+    alert("Sorry, an error occurred while " + status + ".");
+    throw e;
+  }
+}
+
+function readEvents(s, e)
+{
+  return serverCall("GET",
+                    serviceRootPath + "/event-query",
+                    {s: dateToStr(s), e: dateToStr(e)},
+                    "fetching events");
+}
+
+function fetchEvent(eventID)
+{
+  var rows = serverCall("GET",
+                        serviceRootPath + "/event-query",
+                        {id: eventID},
+                        "fetching event #" + eventID);
+  return rows[0];
+}
+
+function addEvent(event)
+{
+  var rows = serverCall("POST",
+                        serviceRootPath + "/event-add",
+                        event,
+                        "saving new event '" + event.desc + "'");
+  return rows[0];
+}
+
+function updateEvent(event)
+{
+  var rows = serverCall("POST",
+                        serviceRootPath + "/event-update",
+                        event,
+                        "updating event #" + event.id);
+  return rows[0];
+}
+
+function deleteEvent(eventID)
+{
+  serverCall("POST",
+             serviceRootPath + "/event-del",
+             {id: eventID},
+             "deleting event #" + eventID);
+}
+
+// ======= Event handlers =========================================================================
+function jump(year, month)
+{
+  var m = new Number(month);
+  JwacsLib.newPage(monthNames[m] + " " + year, {year: year, month: m + 1});
+  showCalendarScreen(year, m);
+}
+
+function jumpFormSubmitted(evt)
+{
+  Event.stop(window.event ? window.event : evt);
+  var year = $F('jumpYear');
+  var month = $F('jumpMonth');
+
+  if(year < 1901)
+    alert("Sorry, this calendar only supports years from 1901 onward");
+  else
+    jump(year, month);
+}
+
+function eventEdit(elm)
+{
+  //TODO Don't clobber the existing event if it's unsaved
+  var event = {date: dateToStr(new Date)};
+  if(elm.id)
+  {
+    var aMatch = elm.id.match(/^event(\d+)/);
+    if(aMatch)
+    {
+      // Edit event
+      event = fetchEvent(aMatch[1]);
+      if(!event)
+      {
+        alert("Sorry, event #" + aMatch[1] + " ('" + elm.innerHTML.unescapeHTML() + "') no longer exists.");
+        new Effect.Fade(elm);
+        waitForEffectQueue();
+        elm.parentNode.removeChild(elm);
+      }
+    }
+    else
+    {
+      // Add new event
+      event = {date: elm.id};
+    }
+  }
+
+	var child = window.open("about:blank", "addEvent", "width=400,height=500,toolbar=no,top=100,left=100");
+	var doc = child.document.open();
+  doc.write(calcEventEditHtml());
+  doc.close();
+
+  // Fill in the data
+  if(event.id)
+  {
+    doc.title = "Edit event";
+    doc.getElementById("eventWindowTitle").innerHTML = "Edit event";
+    doc.getElementById("eventDeleteLink").style.display="";
+    doc.getElementById("eventID").value = event.id;
+  }
+  else
+  {
+    doc.title = "Add new event";
+    doc.getElementById("eventWindowTitle").innerHTML = "Add new event";
+    doc.getElementById("eventDeleteLink").style.display="none";
+  }
+  
+  if(event.desc)
+    doc.getElementById("eventDesc").value = event.desc;
+
+  if(event.date)
+  {
+    var d = strToDate(event.date);
+    doc.getElementById("eventYear").value = d.getFullYear();
+    doc.getElementById("eventMonth").value = (d.getMonth() + 1);
+    doc.getElementById("eventDay").value = d.getDate();
+  }
+
+  if(event.notes)
+    doc.getElementById("eventNotes").value = event.notes;
+
+  doc.getElementById("eventDesc").focus();  
+}
+
+function revertPredicate(elm)
+{
+  if(elm._successfulDrop)
+  {
+    elm._successfulDrop = null;
+    return false;
+  }
+  return true;
+}
+
+function eventRevertEffect(eventElm, queue)
+{
+  // HACK
+  // We're kind of cheating by having `queue` be the second arg instead of the fourth;
+  // Scriptaculous will pass in 2 numbers that we ignore on revert.  For now, just ignore
+  // anything that isn't a string.
+  if(typeof queue != 'string')
+    queue = null;
+
+  var curX = parseInt(eventElm.style.left || '0');
+  var curY = parseInt(eventElm.style.top || '0');
+  var dur = Math.sqrt(Math.abs(curY^2)+Math.abs(curX^2)) * 0.02;
+  if(queue)
+    eventElm._revert = new Effect.Move(eventElm, {x: -curX, y: - curY, duration: dur,
+                                                  queue: { scope: queue, position: 'end'}});
+  else
+    eventElm._revert = new Effect.Move(eventElm, {x: -curX, y: - curY, duration: dur});
+}
+
+function eventStartEffect(element)
+{
+  element._opacity = Element.getOpacity(element); 
+  element._cursor = Element.getStyle(element, 'cursor');
+  element.style.cursor = 'move';
+  new Effect.Opacity(element, {duration:0.2, from:element._opacity, to:0.7});
+}
+
+function eventEndEffect(element)
+{
+  element.style.cursor = element._cursor;
+  var toOpacity = typeof element._opacity == 'number' ? element._opacity : 1.0;
+  new Effect.Opacity(element, {duration: 0.2, from: 0.7, to: toOpacity});
+}
+
+function eventDropped(eventElm, dayElm)
+{
+  // No change here
+  if(eventElm.parentNode == dayElm)
+    return;
+
+  // No revert necessary (we think)
+  // Note that the call to updateEvent below causes a "suspend-return" of this handler,
+  // since we're being called from untransformed code (viz. scriptaculous).  So it is
+  // important that we set the "no revert please" flag on eventElm _before_ we call
+  // updateEvent.
+  eventElm._successfulDrop = true;
+
+  try
+  {
+    // Construct an event object from our cached data 
+    var eventID = eventElm.id.match(/^event(\d+)/)[1];
+
+    // Update event data to server with new date
+    var updatedEvent = updateEvent({id: eventID, date: dayElm.id});
+    if(!updatedEvent)
+      throw "sorry, the attempt to update event data failed";
+  }
+  catch(e)
+  {
+    // I guess we need a revert effect after all
+    eventRevertEffect(eventElm);
+    return;
+  }
+
+  // Update display
+  showEvent(updatedEvent, true);
+}
+
+function eventEditFormSubmitted(child, doc)
+{
+  var eventID = doc.getElementById('eventID').value;
+  var eventDesc = doc.getElementById('eventDesc').value;
+  var eventDate = 
+    doc.getElementById('eventYear').value + "-" +
+    doc.getElementById('eventMonth').value + "-" +
+    doc.getElementById('eventDay').value;
+
+  var eventNotes = doc.getElementById('eventNotes').value;
+  if(!validateEventEditForm(doc))
+    return;
+  
+  var updatedEvent;
+  if(eventID)
+    updatedEvent = updateEvent({id: eventID, date: eventDate, desc: eventDesc, notes: eventNotes});
+  else
+    updatedEvent = addEvent({date: eventDate, desc: eventDesc, notes: eventNotes});
+
+  // Firefox 1.0 doesn't seem to like it (and expresses this dislike by
+  // crashing) if you try to close the child window from an XHR response thread
+  // (which is where this code here executes, since addEvent and updateEvent are
+  // both faux-blocking calls that resume their continuations in the
+  // onReadyStateChange handler of an XHR object), so we add the yieldThread
+  // call to force ourselves back onto the GUI thread.
+  JwacsLib.yieldThread();
+  child.close();
+  
+  showEvent(updatedEvent);
+}
+
+// Check the event edit form for errors, return true if everything is ok.
+// Adds error messages to the appropriate fields
+function validateEventEditForm(doc)
+{
+  var year = doc.getElementById('eventYear').value;
+  var month = doc.getElementById('eventMonth').value;
+  var day = doc.getElementById('eventDay').value;
+  var desc = doc.getElementById('eventDesc').value;
+  
+  function showError(elmName, errmsg)
+  {
+    var elm = doc.getElementById(elmName + '-error');
+    elm.style.display = "";
+    elm.innerHTML = errmsg.escapeHTML();
+    doc.getElementById(elmName).focus();
+  }
+
+  function hideError(elmName)
+  {
+    var elm = doc.getElementById(elmName + '-error');
+    elm.style.display = "none";
+    elm.innerHTML = "";
+  }
+  
+  var yearOK = false;
+  var monthOK = false;
+  var dayOK = false;
+  var descOK = false;
+  
+  if(isNaN(year))
+    showError("eventYear", "Please enter a numeric year value");
+  else if(year < 1901)
+    showError("eventYear", "Sorry, this calendar only supports dates from 1901 onwards");
+  else
+  {
+    hideError("eventYear");
+    yearOK = true;
+  }
+  
+  if(isNaN(month))
+    showError("eventMonth", "Please enter a numeric month value");
+  else if(month < 1 || month > 12)
+    showError("eventMonth", "Please enter a month value between 1 and 12");
+  else
+  {
+    hideError("eventMonth");
+    monthOK = true;
+  }
+  
+  if(isNaN(day))
+    showError("eventDay", "Please enter a numeric day value");
+  else if(yearOK && monthOK && (day < 1 || day > lastDay(year, month - 1)))
+    showError("eventDay", "Please enter a day value between 1 and " + lastDay(year, month - 1));
+  else
+  {
+    hideError("eventDay");
+    dayOK = true;
+  }
+
+  if(!desc || desc.match(/^\s*$/))
+    showError("eventDesc", "Please enter an event description");
+  else
+  {
+    hideError("eventDesc");
+    descOK = true;
+  }
+  
+  return descOK && yearOK && monthOK && dayOK;
+}
+
+function maybeDelete(child, doc)
+{
+  var desc = doc.getElementById('eventDesc').value;
+  var eventID = doc.getElementById('eventID').value;
+  
+  var shouldDelete = confirm("Really delete '" + desc + "'?");
+	if(shouldDelete)
+	{
+		deleteEvent(eventID);
+
+    JwacsLib.yieldThread();
+    child.close();
+
+    var eventElm = $('event' + eventID);
+    if(eventElm)
+    {
+      new Effect.Fade(eventElm);
+      waitForEffectQueue();
+      eventElm.parentNode.removeChild(eventElm);
+    }
+	}
+	else
+	{
+    child.focus();
+		doc.getElementById('eventNotes').focus();
+	}
+}
+
+// ======= In-place editing ========================================================================
+
+// TODO maybe we want to package this up into a more generic object-style effect (as in scriptaculous)
+// TODO at the least we should factor inPlaceEdit and inPlaceAdd
+function inPlaceEditEvent(eventElm)
+{
+  var editForm = document.createElement("FORM");
+  var textarea = document.createElement("TEXTAREA");
+  textarea.className = "inplaceEditor";
+  textarea.value = eventElm.innerHTML.unescapeHTML();
+  editForm.appendChild(textarea);
+
+  Element.hide(eventElm);
+  eventElm.parentNode.insertBefore(editForm, eventElm);
+  textarea.focus();
+
+  textarea.onkeypress = function(evt) {
+
+    if(window.event)
+      evt = window.event;
+    
+    if(evt.keyCode == Event.KEY_ESC)
+    {
+      // Escape abandons changes
+      editForm.parentNode.removeChild(editForm);
+      Element.show(eventElm);
+    }
+    else if(evt.keyCode == Event.KEY_RETURN && !evt.shiftKey)
+    {
+      // Shift-return inserts a newline; plain return submits the form
+      Event.stop(evt);
+
+      // Validate
+      if(!textarea.value || textarea.value.match(/^\s*$/))
+      {
+        alert("Event descriptions must not be empty");
+        return;
+      }
+
+      editForm.parentNode.removeChild(editForm);
+      Element.show(eventElm);
+
+      var eventID = eventElm.id.match(/^event(\d+)$/)[1];
+      var updatedEvent = updateEvent({id: eventID, desc: textarea.value});
+      if(updatedEvent)
+        showEvent(updatedEvent);
+    }
+  };
+}
+
+function inPlaceAddEvent(dayElm)
+{
+  var editForm = document.createElement("FORM");
+  var textarea = document.createElement("TEXTAREA");
+  textarea.className = "inplaceEditor";
+  editForm.appendChild(textarea);
+
+  dayElm.appendChild(editForm);
+  textarea.focus();
+
+  textarea.onkeypress = function(evt) {
+
+    if(window.event)
+      evt = window.event;
+    
+    if(evt.keyCode == Event.KEY_ESC)
+    {
+      // Escape abandons changes
+      dayElm.removeChild(editForm);
+      return;
+    }
+    else if(evt.keyCode == Event.KEY_RETURN && !evt.shiftKey)
+    {
+      // Shift-return inserts a newline; plain return submits the form
+      Event.stop(evt);
+
+      // Validate
+      if(!textarea.value || textarea.value.match(/^\s*$/))
+      {
+        alert("Event descriptions must not be empty");
+        return;
+      }
+
+      dayElm.removeChild(editForm);
+      var eventID = "new"+(new Date).getTime();
+      var event = {id: eventID, desc: textarea.value, date: dayElm.id, notes: ""};
+      var eventElm = showEvent(event);
+
+      var addedEvent = addEvent(event);
+      dayElm.removeChild(eventElm);
+      if(addedEvent)
+        showEvent(addedEvent);
+    }
+  };
+}
+
+//======= script.aculo.us enhancements =============================================================
+
+// Resume a continuation on update
+Effect.QueuedAction = Class.create();
+Object.extend(Object.extend(Effect.QueuedAction.prototype, Effect.Base.prototype), {
+  initialize: function(continuation, scopeName)
+  {
+    var options = Object.extend({
+      queue: {position: 'end', scope: scopeName || 'global'}
+    }, arguments[2] || {});
+    this.continuation = continuation;
+    this.start(options);
+  },
+
+  update: function()
+  {
+    JwacsLib.yieldThread();
+    resume this.continuation;
+  }
+});
+
+// Faux-blocks until all the events currently in the specified effect queue have completed
+function waitForEffectQueue(scopeName)
+{
+  new Effect.QueuedAction(function_continuation, scopeName || 'global');
+  suspend;
+}

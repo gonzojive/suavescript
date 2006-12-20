@@ -15,6 +15,9 @@ The Sails system makes it easy to create HTML components in a style similar to D
    <p suaveField="content">some text you can swap out via innerHTML</p>
 The idea is that a javascript object can reference the h1 element via your_sail.view.dom.title, and manipulate it via DOM functions.  I provide no other documentation about this right now, but I'll say it has been quite useful so far for creating large GUI applications.
 
+===js-on-cl===
+This is an experiment with JWACS that attempts to (1) translate javascript into parenscript, (2) embed javascript in lisp by transformation.  Most of the legwork for the former has already been done by the creator of JWACS, and the latter is only an idea.
+
 Documentation
 ==============
 There is little documentation right now.  Sometime I may get around to it.  email me if you have an inquiry

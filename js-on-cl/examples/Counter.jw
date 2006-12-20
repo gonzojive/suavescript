@@ -1,0 +1,51 @@
+import "../lib/prototype.js";
+import "../lib/jwacs-lib.jw";
+
+JwacsLib.initHistory(10); // Only keep 10 history items
+
+var counter;
+function main(hint)
+{
+  if(isNaN(hint.newVal))
+    counter = 0;
+  else
+    counter = new Number(hint.newVal);
+  
+  $('contentDiv').innerHTML =
+    "<div id=counter>" + counter + "</div>" +
+    "<a href='javascript:click(-1);'>DN</a> " +
+    "<a href='javascript:click(1);'>UP</a> " +
+    "<a href='#newVal=44'>44</a> <a href='#newVal=-21'>-21</a>" +
+    "<p><tt>keyCount(pageThunks) = <span id='thunkSize'>" + keyCount(JwacsLib.pageThunks) +"</span></tt>" +
+    "<p id='provenancePara'><span style='color:orange;'>From user</span></p>";
+}
+
+function keyCount(obj)
+{
+  var count = 0;
+
+  var dummyObj = new Object;
+
+  for(var i in obj)
+  {
+    if(dummyObj[i])
+      continue;
+    count++;
+  }
+  return count;
+}
+
+function click(delta)
+{
+  var newVal = counter + delta;
+  JwacsLib.newPage("Hash Counter " + newVal, {newVal: newVal});
+  counter = newVal;
+  draw();
+}
+
+function draw()
+{
+  $('counter').innerHTML = counter;
+  $('thunkSize').innerHTML = keyCount(JwacsLib.pageThunks);
+  $('provenancePara').innerHTML = "<span style='color:darkcyan;'>From newPage</span>";
+}

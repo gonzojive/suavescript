@@ -1,0 +1,338 @@
+//// jwacs-lib.jw
+///
+/// Defines some "framework"-style functionality for use by jwacs applications
+
+// Namespace
+var JwacsLib =
+{
+  //// Handy utilities
+
+  // Sleep for `msec` milliseconds, and then continue executing on the GUI thread
+  sleep: function(msec)
+  {
+    var k = function_continuation;
+    setTimeout(function() { resume k; }, msec);
+    suspend;
+  },
+
+  // Yield the thread to the browser process.  Execution will resume on the GUI thread.
+  yieldThread: function()
+  {
+    JwacsLib.sleep(0);
+  },
+
+  //// History management (based loosely on Brad Neuberg's Really Simple History;
+  //// see http://codinginparadise.org/projects/dhtml_history/README.html)
+  
+  pageThunks: new Object,       // Lookup from hash to thunk
+  maxHistoryEntries: 50,        // Maximum number of historical thunks to keep in pageThunks
+                                //   (we only prune in newPage calls, so it is
+                                //   actually possible for the user to
+                                //   temporarily drive the size of pageThunks
+                                //   arbitrarily beyond this threshold)
+  generatedHashes: new Object,  // Lookup from hash to token of newPage-generated hashes
+  nextToken: 0,
+  currentHash: new Object,      // Won't be equal to any other value on inital load
+  
+  initHistory: function(maxHistoryEntries)
+  {
+    if(!isNaN(maxHistoryEntries))
+      JwacsLib.maxHistoryEntries = maxHistoryEntries;
+    
+    if(JwacsLib.isInternetExplorer())
+    {
+      document.write("<iframe style='position:absolute;top:-10000;left:-10000;width:1px;height:1px;'" +
+                     "id='HistoryIFrame' src='blank.html?0'></iframe>");
+    }
+
+    var startTimerThunk = function()
+    {
+      setInterval(JwacsLib.checkLocation, 200);
+    };
+
+    if (window.addEventListener)
+      window.addEventListener("load", startTimerThunk, false);
+    else if (window.attachEvent)
+      window.attachEvent("onload", startTimerThunk, false);
+  },
+
+  newPage: function(title, hint)
+  {
+    function propertiesToString(obj)
+    {
+      var nextChar = "";
+      var result = "";
+      for(field in obj)
+      {
+        if(typeof obj[field] == "function")
+          continue; // skip all the methods added to the Object prototype by prototype
+        result += nextChar + escape(field) + "=" + escape(obj[field]);
+        nextChar = "&";
+      }
+      
+      return result;
+    }
+
+    // Prune the pageThunk list before proceeding
+    JwacsLib.prunePageThunks();
+    
+    var token = JwacsLib.nextToken++;
+    var k = function_continuation;
+    var hash = propertiesToString(hint) + '|' + token;
+    JwacsLib.generatedHashes[hash] = token;
+    JwacsLib.pageThunks[hash] = function() { document.title = title; resume k; };
+    
+    // Setting the hash of the window does not add a history entry in Internet Explorer,
+    // so we call through a helper IFrame, which adds the history entry and then calls
+    // back to this frame to change the location bar.
+    if(JwacsLib.isInternetExplorer())
+    {
+      var iframe = document.getElementById('HistoryIFrame');
+      iframe.src = "blank.html?" + escape(hash); // !!! Note that we are double-escaping here
+    }
+    else
+      window.location.hash = '#' + hash;
+    
+    suspend;
+  },
+  
+  stripChar: function(str, ch)
+  {
+    if(str && str.charAt(0) == ch)
+      return str.substr(1);
+    return str;
+  },
+  
+  stripHash: function(str)
+  {
+    return JwacsLib.stripChar(str, '#');
+  },
+
+  stripToken: function(str)
+  {
+    if(!str || typeof str != "string")
+      return str;
+    return str.replace(/\|\d+$/, "");
+  },
+
+  getToken: function(str)
+  {
+    if(!str || typeof str != "string")
+      return 0;
+    
+    var aMatch = str.match(/\|(\d+)$/);
+    if(aMatch)
+      return new Number(aMatch[1]);
+    else
+      return 0;
+  },
+
+  parsePageArgs: function()
+  {
+    var hash = JwacsLib.stripChar(window.location.hash, '#');
+    if(hash)
+    {
+      hash = JwacsLib.stripToken(hash);
+      hash = hash.split('&');
+    }
+    else
+      hash = [];
+  
+    var query = JwacsLib.stripChar(window.location.search, '?');
+    if(query)
+    {
+      query = JwacsLib.stripToken(query);  // ??? Necessary?
+      query = query.split('&');
+    }
+    else
+      query = [];
+
+    var result = {};
+    var i;
+    for(i = 0; i < query.length; i++)
+    {
+      var factor = query[i].split('=');
+      result[unescape(factor[0])] = unescape(factor[1]);
+    }
+
+    for(i = 0; i < hash.length; i++)
+    {
+      var factor = hash[i].split('=');
+      result[unescape(factor[0])] = unescape(factor[1]);
+    }
+
+    return result;
+  },
+
+  checkLocation: function()
+  {
+    var hash = JwacsLib.stripHash(document.location.hash);
+    if(hash == JwacsLib.currentHash)
+      return;
+
+    var token = JwacsLib.getToken(JwacsLib.currentHash);
+    if(token > JwacsLib.nextToken)
+      JwacsLib.nextToken = token + 1;
+
+    JwacsLib.currentHash = hash;
+
+    if(!JwacsLib.pageThunks[hash])
+      JwacsLib.pageThunks[hash] = function() { main(JwacsLib.parsePageArgs(hash)); };
+
+    JwacsLib.pageThunks[hash]();
+  },
+
+  isInternetExplorer: function()
+  {
+    var userAgent = navigator.userAgent.toLowerCase();
+    return (document.all && userAgent.indexOf('msie') != -1);
+  },
+  
+  prunePageThunks: function()
+  {
+    // If we are generating a new page from somewhere in the back-button
+    // history, then everything in the forward-button history is no longer
+    // accessible.  Before we add to pageThunks, we want to flush all such
+    // thunks.  For now, due to issues with distinguishing between back/forward
+    // and user-entering of user-entered (ie, non-newPage-generated) URIs, we'll
+    // only flush newPage-generated thunks.
+    var currentToken = JwacsLib.getToken(JwacsLib.currentHash);
+    var dummyObj = new Object;  // For skipping prototype.js-added properties
+    var remainingHashes = new Array;
+    for(var h in JwacsLib.pageThunks)
+    {
+      if(dummyObj[h])
+        continue;
+
+      if(!isNaN(currentToken) &&
+         JwacsLib.generatedHashes[h] &&
+         JwacsLib.generatedHashes[h] > currentToken)
+      {
+        delete JwacsLib.generatedHashes[h];
+        delete JwacsLib.pageThunks[h];
+      }
+      else
+        remainingHashes[remainingHashes.length] = h;
+    }
+  
+    // Even if we never use the back button, we want to keep the pageThunks map
+    // from growing without bound, so when it gets to a certain threshold prune
+    // out the oldest entry until we are under the threshold again.
+    if(remainingHashes.length > JwacsLib.maxHistoryEntries)
+    {
+      remainingHashes.sort(function(l, r)
+                           {
+                             var lToken = JwacsLib.getToken(l);
+                             var rToken = JwacsLib.getToken(r);
+                             if(isNaN(lToken))
+                               lToken = -1;
+                             if(isNaN(rToken))
+                               rToken = -1;
+
+                             if(lToken < rToken)
+                               return -1;
+                             else if(rToken < lToken)
+                               return 1;
+                             else
+                               return 0;
+                           });
+      var numberToPrune = remainingHashes.length - JwacsLib.maxHistoryEntries;
+      for(var i = 0; i < numberToPrune; i++)
+      {
+        delete JwacsLib.pageThunks[remainingHashes[i]];
+        delete JwacsLib.generatedHashes[remainingHashes[i]];
+      }
+    }
+  },
+  
+  iframeLoaded: function(search)
+  {
+    var hash = JwacsLib.stripChar(search, '?');
+
+    // We double-escape the iframe hash because it contains a bar,
+    // so unescape the extra layer here to get the bar back, and the field values
+    // will be further unescaped by checkLocation.
+    window.location.hash = unescape(hash);
+  },
+
+  //// Faux-synchronous server-data fetching.
+  getHttpObj: function()
+  {
+    var http = null;
+    try
+    {
+      http = new XMLHttpRequest;
+      if(http) return http;
+    }
+    catch(e)
+    { }
+
+    try
+    {
+      http = new ActiveXObject("Msxml2.XMLHTTP");
+      if(http) return http;
+    }
+    catch(e)
+    { }
+
+    try
+    {
+      http = new ActiveXObject('Microsoft.XMLHTTP');
+      if(http) return http;
+    }
+    catch(e)
+    { }
+
+    throw "Cannot create a suitable http request object";
+  },
+
+  emptyFunction: function() { },
+    
+  sendRequest: function(method, url, body)
+  {
+    var http = JwacsLib.getHttpObj();
+    var k = function_continuation;
+
+    http.onreadystatechange = function()
+    {
+      try
+      {
+        // Report results to the continuation on completion
+        if(http.readyState == 4)
+        {
+          // Resume the continuation with the raw results
+          http.onreadystatechange = JwacsLib.emptyFunction;
+          resume k <- http;
+        }
+      }
+      catch(e)
+      {
+        // Errors are thrown as exceptions into the continuation
+        http.onreadystatechange = JwacsLib.emptyFunction;
+        throw e -> k;
+      }
+    };
+
+    http.open(method, url);
+    http.send(body);
+    suspend;
+  },
+
+  fetchData: function(method, url)
+  {
+    var http = JwacsLib.sendRequest(method, url, null);
+    
+    // Check for errors
+    if(!(http.status == undefined ||
+         http.status == 0 ||
+         (http.status >= 200 && http.status < 300)))
+    {
+      var err = new Error("Server returned " + http.status);
+      err.http = http;
+      throw err;
+    }
+
+    return http.responseText;
+  }
+};
+

@@ -1,0 +1,114 @@
+div#StatusDisplay
+{
+  background: red;
+  color: white;
+  position: absolute;
+  right: 5%;
+  top: 6pt;
+  padding: 2px 2px 2px 2px;
+}
+
+h2#monthTitle
+{
+  margin-top: 0pt;
+  margin-bottom: 6pt;
+  margin-left: 5%;
+  text-align: left;
+  font-family: Garamond, Times New Roman, serif;
+  font-weight: bold;
+  font-size: 30pt;
+}      
+
+a.navLink
+{
+  color: blue;
+  cursor: pointer; 
+  text-decoration: none;
+}
+
+table#monthTable
+{
+  width: 90%;
+  align: center;
+  border-collapse: collapse;
+  border: 1px solid #C0C0C0;
+  min-height: 600px;
+}
+
+table#monthTable td
+{
+  width: 14%;
+  padding: 2px 2px 2px 2px;
+  border: 1px solid #C0C0C0;
+  vertical-align: top;
+}
+
+table#monthTable th
+{
+  padding: 2px 2px 2px 2px;
+  border: 1px solid #C0C0C0;
+}
+
+tr.dataRow
+{
+  height: 5em;
+}
+
+div.dayHeader
+{
+  width: 100%;
+  text-align: right;
+}
+
+td.sameMonthDay div.dayHeader
+{
+  font-weight: bold;
+}
+
+td.otherMonthDay div.dayHeader
+{
+  color: gray;
+}
+
+span.todayDay
+{
+  background-color: #ffcccc;
+  border: 1px solid red; 
+  padding:2px 2px 2px 2px;
+}
+
+div.eventBox
+{
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+td.sameMonthDay div.eventBox
+{
+  border: 1px solid #ACAC62;
+  background-color: #EAEAD7;
+  color: blue;
+}
+
+td.sameMonthDay textarea.inplaceEditor
+{
+  width: 100%;
+  border: 1px inset #ACAC62;
+  background-color: #EAEAD7;
+  color: blue;
+}
+
+td.otherMonthDay div.eventBox
+{
+  border: 1px solid #E0E0E0;
+  background-color: #F0F0F0;
+  color: #888888;
+}
+
+td.otherMonthDay textarea.inplaceEditor
+{
+  width: 100%;
+  border: 1px inset #E0E0E0;
+  background-color: #F0F0F0;
+  color: #888888;
+}
