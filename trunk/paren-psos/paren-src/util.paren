@@ -1,0 +1,67 @@
+(defvar console console)
+
+(defun2 lispy-map (func arg1)
+  (let ((arguments-arr (to-array arguments))
+	(result-arr (array)))
+    (defun2 ith-from-each-arg (i)
+      (return
+	((slot-value (arguments-arr.slice 1) 'map)
+	 (lambda (arg) (return (slot-value arg i))))))
+    (dotimes (index arg1.length)
+      (result-arr.push
+       (func.apply nil (ith-from-each-arg index))))
+    (return result-arr)))
+
+(defun2 to-array (array-like)
+  (let ((result-arr (array)))
+    (dolist (arg array-like)
+      (result-arr.push arg))
+    (return result-arr)))
+
+(defun2 merge-into (receiving-obj)
+  (let ((args (to-array arguments))
+	(donating-objs (args.slice 1)))
+    (dolist (other-obj donating-objs)
+      (doeach (prop other-obj)
+	      (setf (slot-value receiving-obj prop) (aref other-obj prop))))))
+
+(defun2 collect (fun arr)
+  (let ((passing-members (array)))
+    (dolist (member arr)
+      (if (fun member)
+	  (passing-members.push member)))
+    (return passing-members)))
+
+(defun2 every (fun arr)
+  (dolist (member arr)
+    (if (not (fun member))
+	(return false)))
+  (return true))
+
+(defun2 some (fun arr)
+  (dolist (item arr)
+    (if (fun item)
+	(return t)))
+  (return false))
+
+
+(if (or t (not -Array.prototype.filter))
+    (setf -array.prototype.filter
+	  (lambda (fun)
+	    (return (collect fun this)))))
+(if (or t(not -Array.prototype.every))
+    (setf -array.prototype.every
+	  (lambda (fun)
+	    (return (every fun this)))))
+(if (or t (not -Array.prototype.some))
+    (setf -array.prototype.some
+	  (lambda (fun)
+	    (return (some fun this)))))
+
+(defun2 first-child-elem (xml-elem)
+  (doelements (elem xml-elem.child-nodes)
+    (return elem)))
+
+(defun2 assert-no-children (xml-elem)
+  (if (not (== xml-elem.child-nodes.length 0))
+      (log "Assertion failed: element contains more than 0 child nodes" :warn)))
