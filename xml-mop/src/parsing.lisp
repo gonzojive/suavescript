@@ -1,46 +1,101 @@
 (in-package :org.iodb.xml-mop)
 
-(defgeneric add-node-description (parser node-descriptor target-class-or-lambda)
-  (:documentation "Adds a handler to a parser.  This handler should be
-either a function or an element class.  If it is a function, when called
-with a tag string and attributes it should return a value."))
+(defgeneric process-element (parent-element tag-name attributes)
+  (:documentation "Adds the child element with the given tag name and
+ attribs to the parent elem."))
 
-(defmethod add-node-description ((parser standard-parser) (descriptor named-node-descriptor) target-class-or-lambda)
-  (if (stringp (descriptor-matcher descriptor))
-      (setf (gethash (descriptor-matcher descriptor)
-		     (if (descriptor-case-sensitive descriptor)
-			 (parser-case-sensitive-table parser)
-			 (parser-case-insensitive-table parser)))
-	    target-class-or-lambda)
-      (push (cons (descriptor-matcher descriptor)
-		  target-class-or-lambda)
-	    (slot-value parser 'lambda-table))))
+(defgeneric find-allowed-element (parent-element tag-name)
+  (:documentation "Finds the element class underneath parent-element that
+corresponds to the tag string."))
 
-(defgeneric find-element-handler (parser tag-name)
-  (:documentation "Looks up an element in a parser."))
+(defun descriptor-matches? (descriptor test-string)
+  (format t "Checking to see if ~A matches ~A" 	   (descriptor-matcher descriptor) test-string)
+  (funcall (if (descriptor-case-sensitive descriptor)
+	       #'equal
+	       #'equalp)
+	   (descriptor-matcher descriptor)
+	   test-string))
 
-(defmethod find-element-handler ((parser standard-parser) tag-name)
-  (let ((match
-	 (or (gethash tag-name (parser-case-sensitive-table parser))
-	     (gethash tag-name (parser-case-insensitive-table parser))
-	     (find-if #'(lambda (entry)
-			  (funcall (car entry) tag-name))
-		      (parser-lambda-table parser)))))
-    match))
+(defmethod find-allowed-element ((parent-element element) tag-name)
+  (find-allowed-element (class-of parent-element) tag-name))
 
-;(defgeneric element-value (parser tag-name attributes)
-;  (:documentation "Creates an element given an active parser, tag name and attributes."))
+(defmethod find-allowed-element ((parent-element xml-treenode-class) tag-name)
+  (find-if #'(lambda (allowed-element-class)
+	       (labels ((find-matching-descriptor (element-class)
+			  (format t "Searching class ~A for a matching tag descriptor~%" element-class) 
+			  (or (find-if #'(lambda (descriptor)
+					   (descriptor-matches? descriptor tag-name))
+				       (element-class-tag-descriptors element-class))
+			      (find-if #'find-matching-descriptor
+				       (class-direct-subclasses element-class)))))
+		 (find-matching-descriptor allowed-element-class)))
+	   (node-class-allowed-elements parent-element)))
 
-(defmethod make-element-instance ((parser standard-parser) tag-name attributes)
-  (let ((handler (find-element-handler parser tag-name)))
-    (if (subtypep handler (find-class 'element))
-	(make-instance element 
+;(defmethod process-element ((parent-element element) tag-name attributes)
+;  (find-allowed-element parent-element tag-name)
+;(defgeneric process-attribute (element attr-name attr-value))
 
-(defun active-handle-new-element (name attributes seed)
+(defgeneric find-slot-matching-attribute (element attr-name) )
+(defmethod find-slot-matching-attribute ((element element) attr-name)
+  (let ((element-metaclass (class-of element)))
+    (find-if 
+     #'(lambda (slot-definition)
+	 (find-if
+	  #'(lambda (slot-attribute-descriptor)
+	      (descriptor-matches? slot-attribute-descriptor
+				   attr-name))
+	  (element-slot-attributes slot-definition)))
+     (class-slots element-metaclass))))
+
+(define-condition encountered-unmatched-attribute ()
+  ())
+(defgeneric assign-attribute (element name value) )
+(defmethod assign-attribute ((element element) name value)
+  (let ((matching-slot-definition (find-slot-matching-attribute element name)))
+    (if matching-slot-definition
+	(setf (slot-value-using-class (class-of element)
+				      element
+				      matching-slot-definition)
+	      value)
+	(restart-case (error (make-condition 'encountered-unmatched-attribute))
+	  (continue ())))))
+
+(defgeneric assign-attributes (element attributes) )
+(defmethod assign-attributes ((element element) attributes)
+  (format t "Should be assigning some attributes right now...~%")
+  (mapcar #'(lambda (attrib-entry)
+	      (assign-attribute element (string (car attrib-entry))
+				(cdr attrib-entry)))
+	  attributes))
+
+(defgeneric assign-subelement (parent-element subelement) )
+(defmethod assign-subelement ((parent-element element) subelement)
+  (format t "Should be assigning a sub element right now...~%"))
+(defmethod assign-subelement ((parent-element element-class) subelement)
+  (format t "Nothing happens when attempting to assign subelements to an
+element class.~%"))
+
+(define-condition encountered-unknown-element () ())
+
+(defclass parse-seed ()
+  ((element-stack :initarg :element-stack :initform nil
+		  :accessor seed-element-stack)))
+
+(defun active-handle-new-element (name attributes element-stack)
   "Called when an element is encountered and we are in the process
 of churning out objects."
-  (print (stringp name))
-  seed)
+  (let ((new-element-class (find-allowed-element (first element-stack)
+						 (string name))))
+    (if (null new-element-class)
+	(progn
+	  (restart-case (error (make-condition 'encountered-unknown-element))
+	    (continue ()))
+	  element-stack)
+	(let ((new-element (make-instance new-element-class)))
+	  (assign-attributes new-element attributes)
+	  (assign-subelement (first element-stack) new-element)
+	  (append (list new-element) element-stack)))))
+  
 
 (defun active-handle-finish-element (name attributes parent-seed seed)
   "Called when the end of an element is encountered and we are in the process
@@ -53,11 +108,12 @@ of churning out objects."
   (format t "Seed: ~A~%" seed)
   seed)
 
-(defun active-parse-stream (stream)
+(defun active-parse-stream (stream doc-class)
   "This is where we interact with s-xml."
   (s-xml:start-parse-xml
    stream
    (make-instance 's-xml:xml-parser-state
-		  :new-element-hook 'active-handle-new-element
+		  :new-element-hook 'active-handle-new-pelement
 		  :finish-element-hook 'active-handle-finish-element
-		  :text-hook 'active-handle-text)))
+		  :text-hook 'active-handle-text
+		  :seed (list doc-class))))

@@ -26,45 +26,35 @@ for the document."))
 			:documentation "If this is true, then this is the description used to
                                         output an XML version of this descriptor."))
   (:documentation "This is the standard way to describe an XML node.  A node descriptor helps map
-from a cased or uncased string to a handler class or function.  Several may map to a single element."))
+from a cased or uncased string to a handler class or function.  Several descriptors may map to a 
+single element."))
 
-(defclass element-class (standard-class)
-  ((tags :reader element-class-tag-descriptors :initarg :tags :initform nil)
-   (parser :reader element-class-parser :initarg :parser :initform (make-instance 'standard-parser)))
+(defclass xml-treenode-class (standard-class)
+  ((allowed-elements :initarg :allowed-elements :initform nil :accessor node-class-allowed-elements)
+   (parser :reader element-class-parser :initarg :parser :initform (make-instance 'standard-parser))))
+
+(defmethod node-class-allowed-elements ((node-class xml-treenode-class))
+  (mapcar #'find-class (slot-value node-class 'allowed-elements)))
+;(defmethod initialize-instance :around (&rest initargs &key allowed-elements
+
+(defclass element-class (xml-treenode-class)
+  ((tags :accessor element-class-tag-descriptors :initarg :tags :initform nil))
   (:documentation "A metaclass for XML elements.  An additional option that
 can be passed to element classes is the :tags option, which accepts a sequence
 of node-string identifiers."))
-
-(defmethod initialize-instance :after ((class element-class) &key)
-  (format t "Slots found that we should plug into the parser: ~A~%"
-	  (class-slots class)))
-
-(defun make-node-descriptor-from-def-form (def-form)
-  "This function can be called with a little work from the standard macro idiom for
-initializing node descriptors: ('NodeString' :case-sensitive blah :arg2 blah"
-  (apply #'make-instance 'named-node-descriptor
-	 :matcher (first def-form)
-	 (rest def-form)))
 	 
-(defclass document-class (standard-class)
-  ((parser :initform (make-instance 'standard-parser) :reader document-parser))
-  (:documentation "A document metaclass."))
-
 (defgeneric element-slot-subelements (slot-definition))
 (defgeneric element-slot-attributes (slot-definition))
 
 (defclass element-direct-slot-definition (standard-direct-slot-definition)
   ((subelement :accessor element-slot-subelement :initarg :subelement :initform nil)
    (attribute :accessor element-slot-attribute :initarg :attribute :initform nil)))
-;(defmethod element-slot-subelements ((slot-definition element-direct-slot-definition))
-;  (if ()
-
-;(defmethod element-slot-attributes ((slot-definition element-direct-slot-definition))
-;  )
+;(defmethod element-slot-subelements ((slot-definition element-direct-slot-definition)))
+;(defmethod element-slot-attributes ((slot-definition element-direct-slot-definition)))
 
 (defclass element-effective-slot-definition (standard-effective-slot-definition)
-  ((subelements :accessor element-slot-subelements :initarg :subelements :initform nil :type named-node-descriptor)
-   (attributes :accessor element-slot-attributes :initarg :attributes :initform nil :type named-node-descriptor)))
+  ((subelements :accessor element-slot-subelements :initarg :subelements :initform nil) ;:type named-node-descriptor)
+   (attributes :accessor element-slot-attributes :initarg :attributes :initform nil))) ;:type named-node-descriptor)))
 
 ;; Now the object system knows to use our new slot definitions when 
 ;; dealing with MY-METACLASS, rather than the default ones.
@@ -77,7 +67,7 @@ initializing node descriptors: ('NodeString' :case-sensitive blah :arg2 blah"
 (defun resolve-node-descriptor-definition (descriptor-definition)
   "Takes either a list of descriptor-definitions or a single
 descriptor definition."
-  (print descriptor-definition)
+  (format t "Resolving descriptor definition ~A~%" descriptor-definition)
   ; determine if this is a single definition or many definitions
   ; this is a stupidly complicated logical statement, sorry
   (let ((many (and (listp descriptor-definition)
@@ -104,9 +94,10 @@ descriptor definition."
 		 (list possible-list))))
     (let ((effective-slotd (call-next-method)) ;let CLOS do the lifting
 	  (resolved-attribute-definitions
-	   (resolve-node-descriptor-definition
-	    (ensure-list
-	     (element-slot-attribute (first direct-slot-definitions)))))
+	   (ensure-list
+	    (resolve-node-descriptor-definition
+	     (ensure-list
+	      (element-slot-attribute (first direct-slot-definitions))))))
 	  (resolved-subelement-definitions
 	   (ensure-list
 	    (resolve-node-descriptor-definition
@@ -128,10 +119,11 @@ descriptor definition."
 
 ;; the following code gives objects with element-class as their metaclass
 ;; a default superclass of element
+
 (defmethod initialize-instance :around
-  ((class element-class) &rest initargs  &key direct-superclasses)
+  ((class element-class) &rest initargs  &key direct-superclasses tags)
   (declare (dynamic-extent initargs))
-  (print "HOLLLLLLLLAR")
+
   (if (loop for class in direct-superclasses
             thereis (subtypep class (find-class 'element)))
 
@@ -144,11 +136,17 @@ descriptor definition."
             :direct-superclasses
             (append direct-superclasses
                     (list (find-class 'element)))
-            initargs)))
+            initargs))
+  (assign-node-tag-descriptors class 
+			       (parse-node-tag-descriptors tags))
+  class)
+
 
 (defmethod reinitialize-instance :around
-  ((class element-class) &rest initargs &key (direct-superclasses '() direct-superclasses-p))
+  ((class element-class) &rest initargs
+   &key (direct-superclasses '() direct-superclasses-p) tags)
   (declare (dynamic-extent initargs))
+  
   (if direct-superclasses-p
     ;; if direct superclasses are explicitly passed
     ;; this is exactly like above
@@ -163,5 +161,29 @@ descriptor definition."
               initargs))
     ;; if direct superclasses are not explicitly passed
     ;; we _must_ not change anything
-    (call-next-method)))
+    (call-next-method))
+  (assign-node-tag-descriptors class 
+			       (parse-node-tag-descriptors tags))
+  class)
 
+
+(defun assign-node-tag-descriptors (node-class parsed-tag-descriptors)
+  (format t "Assigning ~A~% to ~A~%" parsed-tag-descriptors node-class)
+  (setf (element-class-tag-descriptors node-class)
+	parsed-tag-descriptors))
+
+(defun parse-node-tag-descriptors (tag-descriptors)
+  ;(setf (element-class-tag-descriptors node-class)
+  (format t "resolving tag descriptors ~A~%~A~%" tag-descriptors   (mapcar #'resolve-node-descriptor-definition
+									   tag-descriptors))
+  (mapcar #'resolve-node-descriptor-definition
+	  tag-descriptors))
+
+; class initialization for the element class should instatiate the tags
+; in the initargs and index the attribute/subelement parser with relevant
+; information passed in on the slots
+(defmethod initialize-instance :after ((class element-class) &key)
+  nil)
+
+(defmethod reinitialize-instance :after ((class element-class) &key)
+  nil)

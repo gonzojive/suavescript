@@ -1,21 +1,31 @@
 (in-package :xml-mop)
 
-(defclass strange-price-element ()
-  ((currency-code :accessor price-strange-code
-		  :attribute "StrangePrice"
-		  :initarg nil))
-  (:metaclass element-class))
+(defclass aws-response-document ()
+  ()
+  (:metaclass element-class)
+  (:allowed-elements abstract-base-response))
 
-(defclass price-element (strange-price-element)
+(defclass abstract-base-response ()
+  ()
+  (:metaclass element-class)
+  (:allowed-elements price-element))
+
+(defclass item-search-response (abstract-base-response)
+  ()
+  (:metaclass element-class)
+  (:tags ("ItemSearchResponse" :primary t)))
+
+(defclass price-element ()
   ((currency-code :accessor price-currency-code
 		  :initarg :currency-code
-;		  :attribute ("CurrencyCode" :primary t :case-sensitive t)
-		  :attribute "currency-code"
+		  :attribute ("CurrencyCode" :primary t :case-sensitive t)
+		  :attribute ("Bogus")
+;		  :attribute "currency-code"
 ;		  :attribute "currencyCode"
 		  ))
   (:metaclass element-class)
-  (:tags ("hello" :primary t :case-sensitive t)
-	 ("Price" :sweet t )))
+  (:tags ("Price" :primary t :case-sensitive nil)
+	 ("PriceElement" :case-sensitive nil)))
 
 ;(defclass item-element ()
 ;  ((asin :accessor item-asin :initform "" :initarg :asin)
