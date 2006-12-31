@@ -1,0 +1,28 @@
+(defpackage :org.iodb.amazon.ecs
+  (:nicknames :amazon-ecs :ecs :iodb-ecs)
+  (:use :common-lisp)
+  (:export +amazon-merchant-id+
+	   :AMAZON-ASIN :ARGUMENT :ARGUMENTS :ASSOCIATE-ID :AUTHOR :AUTHOR-ELEMENT
+	   :AWS-KEY :BODY :CRACK :CREATOR :CREATORS :DEF-AMAZON-ECS-CLASS
+	   :DETAIL-PAGE-URL :DETAILPAGEURL :GENERATE-ECS-URL :HEADER :HEADERS
+	   :HTTP-HEADER :HTTP-HEADERS :HTTPHEADERS :HYPHEN-WORD :HYPHENATED->CAMELIZED
+	   :IS-VALID :ISBN :ISBN-ELEMENT :ISVALID :ITEM :ITEM-ATTRIBUTES :ITEM-LIKE-THING
+	   :ITEM-SEARCH-REQUEST :ITEM-SEARCH-RESPONSE :ITEMATTRIBUTES :ITEMS
+	   :ITEMSEARCHREQUEST :ITEMSEARCHRESPONSE :JOIN-STRING-LIST :KEYWORDS
+	   :MANUFACTURER :NAME :OPERATION :OPERATION-REQUEST :OPERATIONREQUEST
+	   :ORG.IODB.AMAZON.ECS :PRODUCT-GROUP :PRODUCTGROUP :REQUEST
+	   :REQUEST-PROCESSING-TIME :REQUESTID :REQUESTPROCESSINGTIME :ROLE :SEARCH-INDEX
+	   :SEARCHINDEX :SIMPLE-AMAZON-TEST :SLOT-LIST :STRING-LIST :SUPERCLASSES :SYM
+	   :TAG-NAMES :TAGNAME :TITLE :TITLE-ELEMENT :TOTAL-PAGES :TOTAL-RESULTS
+	   :TOTALPAGES :TOTALRESULTS :VALUE :WORDS :XMLNS
+	   ;; extra, custom-added
+	   :READ-RESPONSE-XML
+))
+(in-package :org.iodb.amazon.ecs)
+
+;;used this to generate export list:
+;(do-symbols (sym :org.iodb.amazon.ecs)
+;       (if (eql (find-package :org.iodb.amazon.ecs) (symbol-package sym))
+;;         (export sym)
+;	   (format t "~A~%" sym)))
+; sorted via (lambda (sym1 sym2) (string-lessp (string sym1) (string sym2))))

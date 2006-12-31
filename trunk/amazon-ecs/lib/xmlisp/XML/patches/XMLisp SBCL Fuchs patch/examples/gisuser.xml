@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!DOCTYPE rss PUBLIC "-//Netscape Communications//DTD RSS 0.91//EN" "http://my.netscape.com/publish/formats/rss-0.91.dtd">
+<!-- Copyright (C) 2000-2003 - GISUser.com -->
+<rss version="0.91">
+	<channel>
+		<title>GISUser.com</title>
+		<link>http://www.gisuser.com</link>
+		<description>GISuser.com News Feed</description>
+		<language>en-us</language>
+		<lastBuildDate>Tue, 12 Oct 2004 14:45:33 -0400</lastBuildDate>
+		<image>
+			<title>GISuser.com News Feed</title>
+			<url>http://www.gisuser.com/templates/gisuser/images/gisuser-80w.gif</url>
+			<link>http://www.gisuser.com</link>
+			<width>80</width>
+		</image>
+		<item><title>Harris Corp. Introduces Powerful New Version of InReality 3-D Visualization Software</title>
+			<link>http://www.gisuser.com/content/view/3582/</link>
+			<description>NEW ORLEANS, October 12, 2004 – Harris Corporation (NYSE:HRS), a world leader in advanced image proc...</description>
+		</item>
+		<item><title>National Notification Network Launches 3n System 3.0</title>
+			<link>http://www.gisuser.com/content/view/3580/</link>
+			<description>Enhanced Technology Features Reverse 911, Geographic Targeting Capabilities; Customized Application ...</description>
+		</item>
+		<item><title>Vexcel Pushing Forward SAR Tomography Technologies</title>
+			<link>http://www.gisuser.com/content/view/3579/</link>
+			<description>Resulting 3D volumetric imaging will greatly enhance SAR products  ...</description>
+		</item>
+		<item><title>Tripod Data Systems Offers Free TDS COGO Software</title>
+			<link>http://www.gisuser.com/content/view/3578/</link>
+			<description>CORVALLIS, Ore.—October 12, 2004—Tripod Data Systems (TDS) announced today that it will provide a co...</description>
+		</item>
+		<item><title>Colombia Firm Selects Bentley for Major Water Distribution Modeling Solutions</title>
+			<link>http://www.gisuser.com/content/view/3577/</link>
+			<description>Haestad WaterGEMS’s Ability to Work Across Stand-Alone, AutoCAD, and GIS Environments Drives Decisio...</description>
+		</item>
+		<item><title>MWH Soft Ships Groundbreaking Sewer Collection Systems Modeling Textbook</title>
+			<link>http://www.gisuser.com/content/view/3576/</link>
+			<description>Eagerly Anticipated Volume Sets New Standard for Wastewater Engineering References...</description>
+		</item>
+		<item><title>RMSI Becomes Oracle Technology Partner</title>
+			<link>http://www.gisuser.com/content/view/3575/</link>
+			<description>NEWARK CA, October 12, 2004: RMSI, a global IT services company, announced today that they have join...</description>
+		</item>
+		<item><title>LizardTech Unveils GeoExpress 4.1 at GEOINT 2004 Symposium</title>
+			<link>http://www.gisuser.com/content/view/3574/</link>
+			<description>GeoExpress 4.1 now supports JPEG 2000...</description>
+		</item>
+	</channel>
+</rss>
