@@ -22,6 +22,8 @@ for the document."))
 (defclass named-node-descriptor ()
   ((matcher :initform nil :initarg :string :initarg :matcher :reader descriptor-matcher)
    (case-sensitive :initform nil :initarg :case-sensitive :reader descriptor-case-sensitive)
+   (element-type :initform nil :initarg :element-type :reader descriptor-element-type)
+   (multiple :initform nil :initarg :multiple :reader descriptor-multiple)
    (primary-description :initform nil :initarg :primary :reader descriptor-primary-description
 			:documentation "If this is true, then this is the description used to
                                         output an XML version of this descriptor."))
@@ -133,9 +135,8 @@ descriptor definition."
      ;; 'my-object is not one of the superclasses, so we have to add it
      (apply #'call-next-method
             class
-            :direct-superclasses
-            (append direct-superclasses
-                    (list (find-class 'element)))
+            :direct-superclasses (append direct-superclasses
+					 (list (find-class 'element)))
             initargs))
   (assign-node-tag-descriptors class 
 			       (parse-node-tag-descriptors tags))
@@ -146,25 +147,33 @@ descriptor definition."
   ((class element-class) &rest initargs
    &key (direct-superclasses '() direct-superclasses-p) tags)
   (declare (dynamic-extent initargs))
-  
-  (if direct-superclasses-p
-    ;; if direct superclasses are explicitly passed
-    ;; this is exactly like above
-    (if (loop for class in direct-superclasses
-              thereis (subtypep class (find-class 'element)))
-       (call-next-method)
-       (apply #'call-next-method
+
+  (format t "Reinitializing ~A~% w/direct superclasses? ~A: ~A ~%" class direct-superclasses-p direct-superclasses)
+
+  (let ((initargs (append (list :tags (parse-node-tag-descriptors tags))
+			  initargs)))
+    (if direct-superclasses-p
+	;; if direct superclasses are explicitly passed
+	;; this is exactly like above
+	(if (loop for class in direct-superclasses
+		  thereis (subtypep class (find-class 'element)))
+
+	    (progn
+	      (apply #'call-next-method class 
+		     :direct-superclasses direct-superclasses initargs))
+	    
+	    (apply #'call-next-method
               class
               :direct-superclasses
               (append direct-superclasses
                       (list (find-class 'element)))
               initargs))
-    ;; if direct superclasses are not explicitly passed
-    ;; we _must_ not change anything
-    (call-next-method))
-  (assign-node-tag-descriptors class 
-			       (parse-node-tag-descriptors tags))
-  class)
+	;; if direct superclasses are not explicitly passed
+	;; we _must_ not change anything
+	(apply #'call-next-method class :direct-superclasses direct-superclasses initargs))))
+;    (assign-node-tag-descriptors class 
+;				 (parse-node-tag-descriptors tags))
+;    class)
 
 
 (defun assign-node-tag-descriptors (node-class parsed-tag-descriptors)
@@ -183,7 +192,9 @@ descriptor definition."
 ; in the initargs and index the attribute/subelement parser with relevant
 ; information passed in on the slots
 (defmethod initialize-instance :after ((class element-class) &key)
+  (finalize-inheritance class)
   nil)
 
 (defmethod reinitialize-instance :after ((class element-class) &key)
+  (finalize-inheritance class)
   nil)
