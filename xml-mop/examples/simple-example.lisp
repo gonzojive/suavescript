@@ -1,14 +1,20 @@
 (in-package :xml-mop)
 
-(defclass aws-response-document ()
+(defclass abstract-base-response ()
+  ((items :accessor ecs-response-items :initform nil :initarg :items
+	  :element (items :multiple t)
+	  :subelement ("Items" :case-sensitive t :element-type items :multiple nil)))
+  (:metaclass element-class)
+  (:allowed-elements price-element))
+
+(defclass items ()
+  ()
+  (:metaclass element-class))
+
+(defclass ecs-response-document ()
   ()
   (:metaclass element-class)
   (:allowed-elements abstract-base-response))
-
-(defclass abstract-base-response ()
-  ()
-  (:metaclass element-class)
-  (:allowed-elements price-element))
 
 (defclass item-search-response (abstract-base-response)
   ()
@@ -26,6 +32,9 @@
   (:metaclass element-class)
   (:tags ("Price" :primary t :case-sensitive nil)
 	 ("PriceElement" :case-sensitive nil)))
+
+(with-open-file (stream "examples/simple-aws.xml")
+  (parse-xml-stream stream (find-class 'ecs-response-document)))
 
 ;(defclass item-element ()
 ;  ((asin :accessor item-asin :initform "" :initarg :asin)
