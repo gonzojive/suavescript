@@ -22,7 +22,7 @@ corresponds to the tag string."))
 
 (defun find-element-class-matching-tag (allowed-element-class tag-name)
   (labels ((find-matching-subclass (element-class)
-	     (format t "Searching class ~A for a matching tag descriptor~%" element-class) 
+;	     (format t "Searching class ~A for a matching tag descriptor~%" element-class) 
 	     (or (some #'(lambda (descriptor)
 			   (and (descriptor-matches? descriptor tag-name)
 				element-class))
@@ -130,102 +130,139 @@ descriptor, and then check the allowed-subelements field of the class."))
 
 (defgeneric assign-attributes (element attributes) )
 (defmethod assign-attributes ((element element) attributes)
-  (format t "Should be assigning some attributes right now...~%")
+;  (format t "Should be assigning some attributes right now...~%")
   (mapcar #'(lambda (attrib-entry)
 	      (assign-attribute element 
 				(string (car attrib-entry))
 				(cdr attrib-entry)))
 	  attributes))
 
-(define-condition encountered-unmatched-subelement ()
-  ())
-
-(defgeneric assign-subelement (parent-element subelement) )
-(defmethod assign-subelement ((parent-element element) subelement)
-  (let ((matching-slot-definition (find-slot-matching-subelement
-				   parent-element subelement)))
-    (if matching-slot-definition
-	(setf (slot-value-using-class (class-of element)
-				      element
-				      matching-slot-definition)
-	      value)
-	(restart-case (error (make-condition 'encountered-unmatched-subelement))
-	  (continue ()))))
-  (format t "Should be assigning a sub element right now...~%"))
-
-(defmethod assign-subelement ((parent-element element-class) subelement)
-  (format t "Nothing happens when attempting to assign subelements to an
-element class.~%"))
-
 (define-condition encountered-unknown-element () ())
+
+(defgeneric child-element-value (child-element parent-element parent-slot)
+  (:documentation "Returns the value that child-element takes when assigned to
+parent-slot on parent-element"))
+
+(defgeneric element-value (element)
+  (:documentation "Returns the 'value' of the element in general.  This depends on
+the element.  For example, if it is a price, then this might return a number in US cents.
+This function is called on the element by default before it is assigned as the slot-value
+to a parent element."))
+
+(defmethod child-element-value (child-element parent-element parent-slot)
+  "By default do not do anything special, just return the element-value
+of the child element"
+  (declare (ignore parent-element) (ignore parent-slot))
+  (element-value child-element))
+
+(defmethod element-value (element)
+  "In general, the value of an element is itself."
+  element)
+
+(defun assign-child-element (parent-element new-child-element parent-slot)
+  "Assigns a child element to the given slot of the parent element.  This function
+takes into account the user's preferences for child element plurality and type conversion
+of the element."
+  (let ((subelement-descriptors (element-slot-subelements parent-slot))
+	(new-child-value (child-element-value
+			  new-child-element parent-element parent-slot)))
+    (if (find-if #'descriptor-multiple subelement-descriptors)
+	(let ((current-slot-value (slot-value-using-class
+				   (class-of parent-element) parent-element  parent-slot)))
+	  (setf (slot-value-using-class
+		 (class-of parent-element) parent-element  parent-slot)
+		(append (list new-child-value) current-slot-value)))
+	(setf (slot-value-using-class
+	       (class-of parent-element) parent-element  parent-slot)
+	      new-child-value))))
 
 ;; the seed used is a list of the form
 ;; (allowed-root-element-classes root-elements element-stack-element*)
 (defun active-handle-new-element (name attributes seed)
   "Called when an element is encountered and we are in the process
 of churning out objects."
-  (multiple-value-bind  (element-stack allowed-root-element-classes root-elements)
+  (multiple-value-bind  (element-stack allowed-root-element-classes root-elements parent-slot-stack)
       (destructure-seed seed)
-    (multiple-value-bind (new-element-class parent-slot)
-	(if (first element-stack) ; if there are any elements on the stack
-	    (find-subelement-matching-tag (class-of (first element-stack))
-					  (string name))
-	    (values
-	     (some #'(lambda (allowed-element-class)
-		       (find-element-class-matching-tag allowed-element-class name))
-		   allowed-root-element-classes)
-	     nil))
-      (if (null new-element-class)
-	  (progn
+    (let ((parent-element (first element-stack)))
+      (multiple-value-bind (new-element-class parent-slot)
+	  (if parent-element ; if there are any elements on the stack
+	      (find-subelement-matching-tag (class-of parent-element)
+					    (string name))
+	      (some #'(lambda (allowed-element-class)
+			(find-element-class-matching-tag allowed-element-class name))
+		    allowed-root-element-classes))
+	(if (null new-element-class)
 	    (restart-case (error "encountered unknown element ~A" name) ;(make-condition 'encountered-unknown-element))
-	      (continue ()))
-	    seed)
-	  (let ((new-element (make-instance new-element-class)))
-	    (assign-attributes new-element attributes)
-	    (when (not (null parent-slot))
-	      (setf (slot-value-using-class (class-of (first element-stack))
-					    (first element-stack)
-					    parent-slot)
-		    new-element))
-	    (generate-seed (append (list new-element) element-stack)
-			   allowed-root-element-classes
-			   (if (null element-stack)
-			       (append root-elements (list new-element))
-			       root-elements)))))))
+	      (continue () seed))
+	    (let ((new-element (make-instance new-element-class)))
+					; assign attributes and the relevant place in the parent element
+	      (assign-attributes new-element attributes)
+;	      (when (not (null parent-slot))
+;		(assign-child-element parent-element new-element parent-slot))
+	      ; append the new element to the element stack along with
+	      ; the slot it will be assigned to when it consumed
+	      (generate-seed (append (list new-element) element-stack)
+			     allowed-root-element-classes
+			     (if (null element-stack)
+				 (append root-elements (list new-element))
+				 root-elements)
+			     (if (not (null parent-slot))
+				 (append (list parent-slot) parent-slot-stack)
+				 parent-slot-stack))))))))
   
-
+  
 (defun destructure-seed (seed)
 ;  (format t "Destructuring seed ~A~% w/ root elements ~A~%" seed (second seed))
   (values
-   (rest (rest seed)) ;element-stack
+   (rest (rest (rest seed))) ;element-stack
    (first seed) ;allowed-root-element-classesn
-   (second seed))) ;root-elements
+   (second seed) ;root-elements
+   (third seed))) ; slot
 
-(defun generate-seed (element-stack allowed-root-element-classes root-elements)
+(defun generate-seed (element-stack allowed-root-element-classes root-elements parent-slots)
+  "Generates the seed that is passed along as an XML stream is parsed.  This is currently not
+the greatest system because of how the parse system is set up (event-driven, and does not allow
+extra consumption).
+Currently a seed encodes the following data:
+the element classes allowed as root elements
+* a list of root elements encountered so far
+* the corresponding slots on the element stack 
+* the element stack as a list
+* a list of slots that correspond to elements on the stack, which will be assigned when elements
+  on the stack are popped off"
   (append (list allowed-root-element-classes)
 	  (list root-elements)
+	  (list parent-slots)
 	  element-stack))
-
 
 (defgeneric finalize-after-parse (element))
 (defmethod finalize-after-parse ((element element))
   nil)
-  
 
 (defun active-handle-finish-element (name attributes parent-seed seed)
   "Called when the end of an element is encountered and we are in the process
 of churning out objects."
-  (declare (ignore attributes) (ignore name))
+  (declare (ignore attributes) (ignore name) (ignore parent-slot))
 ;  (format t "Parent seed: ~A~%Seed: ~A~%" parent-seed seed)
-  (multiple-value-bind  (element-stack allowed-classes root-elements)
+  (multiple-value-bind  (element-stack allowed-classes root-elements parent-slot-stack)
       (destructure-seed seed)
-    (finalize-after-parse (first element-stack))
-    (generate-seed (rest element-stack) allowed-classes root-elements)))
+    (let ((our-element (first element-stack))
+	  (parent-element (second element-stack))
+	  (parent-slot-for-element (first parent-slot-stack)))
+    (finalize-after-parse our-element)
+    (when (and parent-element parent-slot-for-element)
+      (assign-child-element parent-element our-element parent-slot-for-element))
+    (generate-seed
+     (rest element-stack)
+     allowed-classes
+     root-elements
+     (rest parent-slot-stack)))))
 
 (defun active-handle-text (string seed)
   "Called when text is encountered and we are in the process of churning out objects."
 ;  (format t "Seed: ~A~%" seed)
-  (let ((element-stack (rest (rest seed))))
+  (multiple-value-bind  (element-stack)
+      (destructure-seed seed)
     (if (first element-stack)
 	(setf (element-text (first element-stack))
 	      (concatenate 'string (element-text (first element-stack)) string))
@@ -252,7 +289,7 @@ of churning out objects."
 			     :new-element-hook 'active-handle-new-element
 			     :finish-element-hook 'active-handle-finish-element
 			     :text-hook 'active-handle-text
-			     :seed (generate-seed nil acceptable-root-classes nil)))))
+			     :seed (generate-seed nil acceptable-root-classes nil nil)))))
 	(destructure-seed terminal-seed))
     (declare (ignore element-stack) (ignore allowed-root-classes))
     root-elements))

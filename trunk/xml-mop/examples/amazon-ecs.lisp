@@ -3,47 +3,70 @@
   (:use :cl))
 
 (in-package :my-amazon-ecs)
-
-(defmacro defelement (class-name direct-superclasses slots &rest options)
-  `(defclass ,class-name ,direct-superclasses 
-    ,slots
-    ,options
-    (:metaclass element-class)))
-
 (import 'xml-mop::element-class)
-;;; Class definitions for AWS responses
+(import 'xml-mop::element-text)
 
+;;;; Class definitions for AWS responses ;;;;
+
+;;; basic element classes that get reused in a lot of places
+
+(defclass numerical-text-element ()
+  ()
+  (:metaclass element-class)
+  (:documentation "An element that has text that reduces to a number"))
+(defmethod xml-mop:element-value ((element numerical-text-element))
+  (parse-number:parse-number (xml-mop:element-text element)))
+
+(defclass simple-text-element () () (:metaclass element-class))
+(defmethod xml-mop:element-value ((element simple-text-element))
+  (xml-mop:element-text element))
+
+(defclass date-element () () (:metaclass element-class))
+(defmethod xml-mop:element-value ((element date-element))
+  (net.telent.date:parse-time (xml-mop:element-text element)))
+(defclass yes-no-element (simple-text-element) () (:metaclass element-class))
+
+(defclass numerical-measurement-element (numerical-text-element)
+  ((units :attribute "Units" :accessor distance-units :initform ""))
+  (:metaclass element-class))
+
+(defclass digital-distance-element (numerical-measurement-element) () (:metaclass element-class))
+(defclass distance-element (numerical-measurement-element) () (:metaclass element-class))
+(defclass weight-element (numerical-measurement-element) () (:metaclass element-class))
+
+(defclass key-value-element ()
+  ((arg-name :accessor argument-name :initform "" :initarg :name :attribute ("Name"))
+   (arg-value :accessor argument-name :initform "" :initarg :name :attribute ("Value")))
+  (:metaclass element-class)
+  (:documentation "Arguments element in Amazon ECS response"))
+
+(defclass price-element ()
+  ((amount :accessor price-amount :initform 0 :initarg :amount
+	   :subelement (numerical-text-element :alias "Amount"))
+   (currency-code :accessor price-currency-code :initform 0 :initarg :currency-code
+		  :subelement (simple-text-element :alias "CurrencyCode"))
+   (formatted-price :accessor price-formatted :initform 0 :initarg :formatted-price
+		   :subelement (simple-text-element :alias "FormattedPrice")))
+  (:metaclass element-class)
+  (:documentation "Parent of all elements that contain price information"))
+
+(defclass image-element ()
+  ((url :subelement (simple-text-element :alias "URL") :accessor image-url :initform "")
+   (width :subelement (digital-distance-element :alias "Width") :accessor image-width :initform "")
+   (height :subelement (digital-distance-element :alias "Height") :accessor image-height :initform ""))
+  (:metaclass element-class))
+
+;;; Root AWS responses
 
 (defclass abstract-root-response ()
   ((xmlns :accessor response-xmlns :initform "" :initarg :xmlns
 	  :attribute ("xmlns"))
-   (operation-request :accessor response-operation-request :initform nil :initarg :operation-request
-		      :subelement (:element-type operation-request))
+   (operation-request :accessor response-operation-request :initform nil
+		      :subelement (operation-request :alias "OperationRequest"))
    (items :accessor response-items :initform nil :initarg :items
-	  :subelement (:element-type items)))
+	  :subelement (items :alias "Items")))
   (:metaclass element-class)
   (:documentation "root of most all operations response"))
-
-
-(defclass amount () () (:metaclass element-class) (:tags ("Amount")))
-(defclass currency-code () () (:metaclass element-class) (:tags ("CurrencyCode")))
-(defclass formatted-price () () (:metaclass element-class) (:tags ("FormattedPrice")))
-
-(defclass price ()
-  ((amount :accessor price-amount :initform 0 :initarg :amount
-	   :subelement (:element-type amount))
-   (currency-code :accessor price-currency-code :initform 0 :initarg :currency-code
-		 :subelement (:element-type currency-code))
-   (formatted-price :accessor price-formatted :initform 0 :initarg :formatted-price
-		   :subelement (:element-type formatted-price)))
-  (:metaclass element-class)
-  (:tags ("Price"))
-  (:documentation "Parent of all elements that contain price information"))
-(defclass lowest-used-price (price) () (:metaclass element-class) (:tags ("LowestUsedPrice")))
-(defclass lowest-collectible-price (price) () (:metaclass element-class) (:tags ("LowestCollectiblePrice")))
-(defclass lowest-new-price (price) () (:metaclass element-class) (:tags ("LowestNewPrice")))
-(defclass lowest-refurbished-price (price) () (:metaclass element-class) (:tags ("LowestRefurbishedPrice")))
-
 
 (defclass item-search-response (abstract-root-response)
   ()
@@ -57,102 +80,76 @@
   (:tags ("ItemLookupResponse"))
   (:documentation "root of item lookup responses"))
 
-(defclass operation-request-id () () (:metaclass element-class) (:tags ("RequestId")))
 (defclass operation-request ()
-  ((http-headers :accessor operation-http-headers :initform () :initarg :http-headers
-		 :subelement (:element-type http-headers))
+  ((http-headers :accessor operation-http-headers :initform ()
+		 :subelement (http-headers :alias "HTTPHeaders"))
    (request-id :accessor operation-requestid :initform "" :initarg requestid
-	       :subelement (:element-type operation-request-id))
+	       :subelement (simple-text-element :alias "RequestId"))
    (arguments :accessor operation-arguments :initform () :initarg arguments
-	      :subelement (:element-type operation-arguments))
-   (request-processing-time :accessor request-processing-time :initform () :initarg :request-processing-time))
+	      :subelement (operation-arguments))
+   (request-processing-time :accessor request-processing-time :initform ()
+			    :subelement (numerical-text-element :alias "RequestProcessingTime")))
   (:metaclass element-class)
   (:tags ("OperationRequest"))
   (:documentation "OperationResponse element in Amazon ECS response"))
 
 (defclass operation-arguments ()
   ((arguments :accessor operation-arguments :initform nil
-	      :subelement (:element-type operation-argument)))
+	      :subelement (key-value-element :alias "Argument" :multiple t)))
   (:metaclass element-class)
   (:tags ("Arguments")))
 
-(defclass operation-argument ()
-  ((arg-name :accessor argument-name :initform "" :initarg :name :attribute ("Name"))
-   (arg-value :accessor argument-name :initform "" :initarg :name :attribute ("Value")))
-  (:metaclass element-class)
-  (:tags ("Argument"))
-  (:documentation "Arguments element in Amazon ECS response"))
-
-(defclass operation-argument ()	      :subelement (:element-type operation-argument)))
-  (:metaclass element-class)
-  (:tags ("Argument")))
-
-
 (defclass http-headers ()
   ((headers :accessor headers :initform () :initarg :headers
-	    :subelement (:element-type http-header :multiple t)))
+	    :subelement (key-value-element :alias "Header" :multiple t)))
   (:metaclass element-class)
   (:tags ("HTTPHeaders"))
-  (:documentation "HTTPHeaders element in Amazon ECS response"))  
+  (:documentation "HTTPHeaders element in Amazon ECS response"))
 
-(defclass http-header ()
-  ((name :accessor name :initform "" :initarg :name :attribute ("Name"))
-   (value :accessor value :initform "" :initarg :value :attribute ("Value")))
-  (:metaclass element-class)
-  (:tags ("Header"))
-  (:documentation "HTTPHeader element in Amazon ECS response"))
+;;; Information pertaining to items
 
 (defclass items ()
-  ((request :accessor request :initform nil :initarg :request :subelement (:element-type request))
+  ((request :accessor request :initform nil :initarg :request :subelement
+	    (:element-type items-request-info :alias "Request"))
    (items :accessor items :initform () :initarg :items
 	  :subelement (amazon-item :multiple t))
-   (totalresults :accessor total-results :initform 0 :initarg :total-results :type integer)
-   (totalpages :accessor total-pages :initform 0 :initarg :total-pages :type integer))
+   (total-results :subelement (numerical-text-element :alias "TotalResults"))
+   (total-pages :subelement (numerical-text-element :alias "TotalPages")))
   (:metaclass element-class)
   (:tags ("Items"))
   (:documentation "HTTPHeader element in Amazon ECS response"))
 
-
-(defclass request ()
-  ((is-valid :accessor request-is-valid :initform nil :initarg :is-valid
-	    :subelement (request-is-valid))
-   (errors :accessor request-errors :initform nil :initarg :errors)
+(defclass items-request-info ()
+  ((is-valid :accessor request-is-valid :initform nil
+	    :subelement (yes-no-element :alias "IsValid"))
+   (errors :accessor request-errors :initform nil)
    (item-search-request :accessor request-item-search-request :initform ()
-			:initarg :item-search-request :subelement (item-search-request))
+			:subelement (item-search-request))
    (item-lookup-request :accessor item-lookup-request :initform ()
-			:initarg :item-lookup-request :subelement (item-lookup-request)))
+			:subelement (item-lookup-request)))
   (:metaclass element-class)
-  (:tags ("Request"))
   (:documentation "HTTPHeader element in Amazon ECS response"))
-
-(defclass request-is-valid () () (:metaclass element-class) (:tags ("IsValid")))
-
-
-(defclass request-item-id () () (:metaclass element-class) (:tags ("ItemId")))
-(defclass request-response-group () () (:metaclass element-class) (:tags ("ResponseGroup")))
-(defclass request-merchant-id () () (:metaclass element-class) (:tags ("MerchantId")))
-(defclass request-keywords () () (:metaclass element-class) (:tags ("Keywords")))
-(defclass request-search-index () () (:metaclass element-class) (:tags ("SearchIndex")))
 
 (defclass item-search-request ()
   ((keywords :accessor keywords :initform nil :initarg :keywords
-	     :subelement (request-keywords))
+	     :subelement (simple-text-element :alias "Keywords"))
    (merchantid :accessor merchant-id :initform nil :initarg :merchant-id
-	       :subelement (request-merchant-id))
+	       :subelement (simple-text-element :alias "MerchantId"))
+   (response-group :accessor request-response-group :initform nil
+	       :subelement (simple-text-element :alias "ResponseGroup"))
    (searchindex :accessor search-index :initform () :initarg :search-index
-		:subelement (request-search-index)))
+		:subelement (simple-text-element :alias "SearchIndex")))
   (:metaclass element-class)
   (:tags ("ItemSearchRequest"))
   (:documentation "HTTPHeader element in Amazon ECS response"))
-(xml:def-element-class-name ItemSearchRequest item-search-request)
 
 (defclass item-lookup-request ()
   ((item-id :accessor request-item-id :initform nil :initarg :item-id
-	    :subelement (request-item-id))
+	       :subelement (simple-text-element :alias "ItemId"))
    (response-groups :accessor response-groups :initform () :initarg :response-groups
-		   :subelement (request-response-group :multiple t))
+	       :subelement (simple-text-element :alias "ResponseGroup" :multiple t))
    (merchant-id :accessor merchant-id :initform () :initarg :merchant-id
-		:subelement (request-merchant-id)))
+	       :subelement (simple-text-element :alias "MerchantId")))
   (:metaclass element-class)
   (:tags ("ItemLookupRequest"))
   (:documentation "HTTPHeader element in Amazon ECS response"))
@@ -176,37 +173,42 @@
 (defgeneric isbn (item-like-thing)
   (:documentation "Gives the isbn of an item-like thing, e.g. ItemAttributes or Item"))
 
-(defclass item-asin () () (:metaclass element-class) (:tags ("ASIN")))
-(defclass item-detail-page-url () () (:metaclass element-class) (:tags ("DetailPageURL")))
-(defclass item-sales-rank (numerical-text-element) () (:metaclass element-class) (:tags ("SalesRank")))
 (defclass amazon-item ()
   ((item-attributes :accessor item-attributes :initform nil :initarg :item-attributes
 		    :subelement (item-attributes))
-   (asin :accessor item-asin :initform "" :initarg :asin :subelement (item-asin))
-   (sails-rank :subelement (item-sales-rank))
-   (large-image :subelement (large-image) :accessor item-large-image)
-   (small-image :subelement (small-image) :accessor item-small-image)
-   (medium-image :subelement (medium-image) :accessor item-medium-image)
-   (offers :accessor offers :initform () :initarg :offers)
-   (alternate-versions :accessor alternate-versions :initform nil :initarg :alternate-versions)
-   (offer-summary :accessor offer-summary :initform () :initarg :offer-summary :subelement (offer-summary))
+   (asin :accessor item-asin :initform "" :initarg :asin :subelement (simple-text-element :alias "ASIN"))
    (detail-page-url :accessor item-detail-page-url :initform "" :initarg :detail-page-url
-		    :subelement (item-detail-page-url)))
+		    :subelement (simple-text-element :alias "DetailPageURL"))
+   (sales-rank :subelement (numerical-text-element :alias "SalesRank"))
+   (large-image :subelement (image-element :alias "LargeImage") :accessor item-large-image)
+   (small-image :subelement (image-element :alias "SmallImage") :accessor item-small-image)
+   (medium-image :subelement (image-element :alias "MediumImage") :accessor item-medium-image)
+   (image-sets :subelement (image-set-collection :alias "ImageSets") :accessor item-image-sets)
+   (alternate-versions :accessor alternate-versions :initform nil :initarg :alternate-versions)
+   (offer-summary :accessor offer-summary :initform () :initarg :offer-summary
+		  :subelement (offer-summary))
+   (editorial-review :accessor offer-editorial-reviews :initform ()
+		     :subelement (editorial-review-collection :alias "EditorialReviews"))
+   (offers :accessor item-offers :initform ()
+	   :subelement (offers :alias "Offers")))
   (:metaclass element-class)
   (:tags ("Item"))
   (:documentation "HTTPHeader element in Amazon ECS response"))
 
-(defclass image-url () () (:metaclass element-class) (:tags ("URL")))
-(defclass image-height () () (:metaclass element-class) (:tags ("Height")))
-(defclass image-width () () (:metaclass element-class) (:tags ("Width")))
-(defclass abstract-image ()
-  ((url :subelement (image-url) :accessor image-url :initform "")
-   (width :subelement (image-width) :accessor image-width :initform "")
-   (height :subelement (image-height) :accessor image-height :initform ""))
-  (:metaclass element-class))
-(defclass large-image (abstract-image) () (:metaclass element-class) (:tags "LargeImage"))
-(defclass medium-image (abstract-image) () (:metaclass element-class) (:tags "MediumImage"))
-(defclass small-image (abstract-image) () (:metaclass element-class) (:tags "SmallImage"))
+(defclass image-set ()
+  ((category :initform nil :accessor image-set-category :attribute "Category")
+   (large-image :subelement (image-element :alias "LargeImage") :accessor image-set-large-image)
+   (small-image :subelement (image-element :alias "SmallImage") :accessor image-set-small-image)
+   (medium-image :subelement (image-element :alias "MediumImage") :accessor image-set-item-medium-image))
+  (:metaclass element-class)
+  (:documentation "Contains a set of images.  user contributed i guess?"))
+
+(defclass image-set-collection ()
+  ((image-sets :initform nil :accessor image-sets
+	       :subelement (image-set :alias "ImageSet" :multiple t)))
+  (:metaclass element-class)
+  (:documentation "Contains a set of images.  user contributed i guess?"))
+	     
 
 (defclass item-price-description-mixin ()
   ((lowest-new-price :accessor lowest-new-price :initform nil
@@ -221,43 +223,23 @@
 
 (defclass offer-summary (item-price-description-mixin)
   ((totalnew :accessor summary-total-new :initform nil :initarg :total-new
-	     :subelement (summary-total-new))
-   (totalused :accessor lowest-used-price :initform nil :initarg :total-used
-	      :subelement (summary-total-used))
-   (totalcollectible :accessor lowest-used-price :initform nil :initarg :total-collectible
-		     :subelement (summary-total-collectible))
-   (totalrefurbished :accessor lowest-used-price :initform nil :initarg :total-refurbished
-		     	      :subelement (summary-total-refurbished)))
+	     :subelement (numerical-text-element :alias "TotalNew"))
+   (total-used :accessor lowest-used-price :initform nil :initarg :total-used
+	       :subelement (numerical-text-element :alias "TotalUsed"))
+   (total-collectible :accessor lowest-used-price :initform nil :initarg :total-collectible
+		      :subelement (numerical-text-element :alias "TotalCollectible"))
+   (total-refurbished :accessor lowest-used-price :initform nil :initarg :total-refurbished
+		      :subelement (numerical-text-element :alias "TotalRefurbished")))
   (:metaclass element-class)
   (:tags ("OfferSummary"))
   (:documentation "Summary of offers for a particular item"))
 
-(defclass numerical-text-element ()
-  ()
+(defclass creator ()
+  ((role :attribute "Role"))
   (:metaclass element-class)
-  (:documentation "An element that has text that reduces to a number"))
+  (:tags "Creator")
+  (:documentation "Summary of offers for a particular item"))
 
-(defclass summary-total-new (numerical-text-element) () (:metaclass element-class) (:tags ("TotalNew")))
-(defclass summary-total-used (numerical-text-element) () (:metaclass element-class)  (:tags ("TotalUsed")))
-(defclass summary-total-collectible (numerical-text-element) () (:metaclass element-class)  (:tags ("TotalCollectible")))
-(defclass summary-total-refurbished (numerical-text-element) () (:metaclass element-class)  (:tags ("TotalRefurbished")))
-
-(defclass simple-text-element () () (:metaclass element-class))
-(defclass numerical-measurement-element (numerical-text-element)
-  ((units :attribute "Units" :accessor distance-units :initform ""))
-  (:metaclass element-class))
-(defclass distance-element (numerical-measurement-element) () (:metaclass element-class))
-(defclass weight-element (numerical-measurement-element) () (:metaclass element-class))
-
-(defclass price-element ()
-  ((amount :accessor price-amount :initform 0 :initarg :amount
-	   :subelement (numerical-text-element :alias "Amount"))
-   (currency-code :accessor price-currency-code :initform 0 :initarg :currency-code
-		  :subelement (simple-text-element :alias "CurrencyCode"))
-   (formatted-price :accessor price-formatted :initform 0 :initarg :formatted-price
-		   :subelement (simple-text-element :alias "FormattedPrice")))
-  (:metaclass element-class)
-  (:documentation "Parent of all elements that contain price information"))
 
 (defclass item-attributes (item-price-description-mixin)
   ((authors :accessor authors :initform nil :initarg :authors
@@ -272,16 +254,39 @@
 	  :subelement (distance-element :alias "Width"))
    (weight :accessor item-weight :initform nil
 	   :subelement (weight-element :alias "Weight"))
+   (package-dimensions :accessor item-package-dimensions :initform nil
+		       :subelement (dimensional-element :alias "PackageDimensions"))
    (list-price :accessor item-list-price :initform nil
 	       :subelement (price-element :alias "ListPrice"))
    (title :accessor item-title :initform nil
 	  :subelement (simple-text-element :alias "Title"))
    (upc :accessor item-upc :initform nil
 	:subelement (simple-text-element :alias "UPC"))
+   (ean :accessor item-ean :initform nil
+	:subelement (simple-text-element :alias "EAN"))
    (isbn :accessor item-isbn :initform nil
 	 :subelement (simple-text-element :alias "ISBN"))
-   (binding :accessor binding :initform "" :initarg :binding)
-   (creators :accessor creators :initform nil :initarg :creators)
+   (edition :accessor item-edition :initform nil
+	    :subelement (simple-text-element :alias "Edition"))
+   (publication-date :accessor item-publication-date :initform nil
+		     :subelement (date-element :alias "PublicationDate"))
+   (release-date :accessor item-publication-date :initform nil
+		 :subelement (date-element :alias "ReleaseDate"))
+   (publisher :accessor item-publisher :initform nil
+	      :subelement (simple-text-element :alias "Publisher"))
+   (studio :accessor item-studio :initform nil
+	   :subelement (simple-text-element :alias "Studio"))
+   (label :accessor item-label :initform nil
+	    :subelement (simple-text-element :alias "Label"))
+   (number-of-pages :accessor item-number-of-pages :initform nil
+	    :subelement (numerical-text-element :alias "NumberOfPages"))
+   (reading-level :subelement (simple-text-element :alias "ReadingLevel"))
+   (binding :accessor item-binding :initform nil
+	    :subelement (simple-text-element :alias "Binding"))
+   (dewey-decimal-number :accessor item-dewey-decimal-number :initform nil
+			 :subelement (simple-text-element :alias "DeweyDecimalNumber"))
+   (creators :accessor creators :initform nil
+	     :subelement (creator :alias "Creator" :multiple t))
    (actors :accessor actors :initform () :initarg :actors)
    (directors :accessor directors :initform nil :initarg :directors)
    (number-of-items :accessor item-number-of-items :initform nil
@@ -295,73 +300,104 @@
   (:tags "ItemAttributes")
   (:documentation "HTTPHeader element in Amazon ECS response"))
 
+(defclass dimensional-element ()
+  ((height :accessor dimension-height :initform nil
+	   :subelement (distance-element :alias "Height"))
+   (length :accessor dimension-length :initform nil
+	   :subelement (distance-element :alias "Length"))
+   (width :accessor dimension-width :initform nil
+	  :subelement (distance-element :alias "Width"))
+   (weight :accessor dimension-weight :initform nil
+	   :subelement (weight-element :alias "Weight")))
+  (:metaclass element-class))
 
-(defclass offers (xml:xml-serializer)
-  ((totaloffers :accessor total-offers :initform nil :initarg :total-offers)
-   (totalofferpages :accessor lowest-offer-pages :initform nil :initarg :total-offer-pages)
-   (offers :accessor offers :initform () :initarg :offers))
+
+(defclass offers ()
+  ((total-offers :accessor offers-total-offers :initform nil
+		 :subelement (numerical-text-element :alias "TotalOffers"))
+   (total-offer-pages :accessor offers-total-pages :initform nil
+		      :subelement (numerical-text-element :alias "TotalOfferPages"))
+   (offers :accessor offers :initform ()
+	   :subelement (offer :alias "Offer" :multiple t)))
+  (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
 
-(defclass offer (xml:xml-serializer)
-  ((merchant :accessor merchant :initform nil :initarg :merchant)
-   (offerattributes :accessor offer-attributes :initform nil :initarg :offer-attributes)
+(defclass offer ()
+  ((merchant :accessor offer-merchant :initform nil
+	     :subelement (merchant :alias "Merchant"))
+   (offer-attributes :accessor offer-attributes :initform nil
+		     :subelement (offer-attributes :alias "OfferAttributes"))
    (seller :accessor seller :initform nil :initarg :seller)
-   (offerlisting :accessor offer-listing :initform () :initarg :offer-listing))
+   (offer-listing :accessor offer-listing :initform ()
+		  :subelement (offer-listing :alias "OfferListing")))
+  (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
 
-(defclass vendor-like-mixin (xml:xml-serializer)
-  ((averagefeedbackrating :accessor average-feedback-rating :initform nil :initarg :average-feedback-rating)
-   (totalfeedback :accessor total-feedback :initform nil :initarg :total-feedback))
+(defclass vendor-like-mixin ()
+  ((average-feedback-rating :accessor average-feedback-rating :initform nil
+			    :subelement (numerical-text-element :alias "AverageFeedbackRating"))
+   (total-feedback :accessor total-feedback :initform nil
+		   :subelement (numerical-text-element :alias "TotalFeedback")))
+  (:metaclass element-class)
   (:documentation "Mixed into seller and vendor to provide shared slots for the most part"))
 
 (defclass merchant (vendor-like-mixin)
-  ((merchantid :accessor merchant-id :initform nil :initarg :merchant-id)
-   (glancepage :accessor glance-page :initform nil :initarg :glance-page))
+  ((merchant-id :accessor merchant-id :initform nil
+		:subelement (simple-text-element :alias "MerchantId"))
+   (glancepage :accessor glance-page :initform nil
+	       :subelement (simple-text-element :alias "GlancePage")))
+  (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
 
 (defclass seller (vendor-like-mixin)
   ((sellerid :accessor seller-id :initform nil :initarg :seller-id))
+  (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
 
-(defclass offer-attributes (xml:xml-serializer)
-  ((condition :accessor offer-condition :initform nil :initarg :condition)
-   (conditionnote :accessor condition-note :initform nil :initarg :condition-note)
-   (willshipexpedited :accessor will-ship-expedited :initform nil :initarg :will-ship-expedited)
-   (willshipinternational :accessor will-ship-international :initform nil :initarg :will-ship-international)
-   (subcondition :accessor subcondition :initform nil :initarg :subcondition))
+(defclass offer-attributes ()
+  ((condition :accessor offer-condition :initform nil
+	   :subelement (simple-text-element :alias "Condition"))
+   (conditionnote :accessor condition-note :initform nil
+	   :subelement (simple-text-element :alias "ConditionNote"))
+   (will-ship-expedited :accessor will-ship-expedited :initform nil
+	   :subelement (simple-text-element :alias "WillShipExpedited"))
+   (will-ship-international :accessor will-ship-international :initform nil
+			    :subelement (simple-text-element :alias "WillShipInternational"))
+   (subcondition :accessor subcondition :initform nil
+		 :subelement (simple-text-element :alias "SubCondition")))
+  (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
-(xml:def-element-class-name OfferAttributes offer-attributes)
 
-(defclass offer-listing (xml:xml-serializer)
-  ((offerlistingid :accessor offer-listing-id :initform nil :initarg :offer-listing-id)
-   (price :accessor price :initform nil :initarg :price)
-   (availability :accessor availability :initform nil :initarg :availability)
-   (availabilityattributes :accessor availability-attributes :initform nil :initarg :availability-attributes)
-   (amountsaved :accessor amount-saved :initform nil :initarg :amount-saved)
-   (percentagesaved :accessor percentage-saved :initform nil :initarg :percentage-saved)
-   (exchangeid :accessor exchange-id :initform nil :initarg :exchange-id)
-   (quantity :accessor quantity :initform nil :initarg :quantity)
-   (iseligibleforsupersavershipping :accessor is-eligible-for-super-saver-shipping :initform nil :initarg :saver-shipping))
+(defclass offer-listing ()
+  ((offerlistingid :accessor offer-listing-id :initform nil
+		   :subelement (simple-text-element :alias "OfferListingId"))
+   (price :accessor price :initform nil
+	  :subelement (price-element :alias "Price"))
+   (availability :accessor availability :initform nil
+		 :subelement (simple-text-element :alias "Availability"))
+;   (availabilityattributes :accessor availability-attributes :initform nil
+;   :subelement (simple-text-element :alias "OfferListingId"))
+   (amount-saved :accessor amount-saved :initform nil
+		 :subelement (price-element :alias "AmountSaved"))
+   (percentage-saved :accessor percentage-saved :initform nil
+		     :subelement (simple-text-element :alias "PercentageSaved"))
+   (exchange-id :accessor exchange-id :initform nil 
+		:subelement (simple-text-element :alias "ExchangeId"))
+   (quantity :accessor quantity :initform nil
+	     :subelement (numerical-text-element :alias "Quantity"))
+   (eligible-for-saver-shipping :accessor eligible-for-saver-shipping? :initform nil
+				:subelement (yes-no-element :alias "IsEligibleForSuperSaverShipping")))
+   (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
-(xml:def-element-class-name OfferListing offer-listing)
 
-(defclass availability-attributes (xml:xml-serializer)
-  ((availabilitytype :accessor author-element :initform nil :initarg :author-element)
-   (minimumhours :accessor title-element :initform "" :initarg :title-element)
-   (maximumhours :accessor isbn :initform "" :initarg :isbn))
-  (:documentation "HTTPHeader element in Amazon ECS response"))
-(xml:def-element-class-name AvailabilityAttributes availability-attributes)
+(defclass editorial-review ()
+  ((source :accessor review-source :initform nil
+	   :subelement (simple-text-element :alias "Source"))
+   (content :accessor review-content :initform nil
+	   :subelement (simple-text-element :alias "Content")))
+  (:metaclass element-class))    
 
-(defclass alternate-version (item-attributes)
-  ((asin :accessor amazon-asin :initform nil :initarg :amazon-asin))
-  (:documentation "Alternate version of an item."))
-(xml:def-element-class-name AlternateVersion alternate-version)
-
-(defclass alternate-versions (xml:xml-serializer)
-  ((alternateversions :accessor alternate-version :initform () :initarg :alternate-versions))
-  (:documentation "Alternate version of an item."))
-(xml:def-element-class-name AlternateVersions alternate-versions)
-
-(defclass creator (xml:xml-serializer)
-  ((role :accessor role :initform "" :initarg :role))
-  (:documentation ""))
+(defclass editorial-review-collection ()
+  ((reviews :accessor reviews  :initform nil
+	    :subelement (editorial-review :alias "EditorialReview" :multiple t)))
+  (:metaclass element-class))

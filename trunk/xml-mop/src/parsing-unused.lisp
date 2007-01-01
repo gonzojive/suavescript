@@ -1,5 +1,23 @@
 (in-package :org.iodb.xml-mop)
 
+(defgeneric assign-subelement (parent-element subelement) )
+(defmethod assign-subelement ((parent-element element) subelement)
+  (let ((matching-slot-definition (find-slot-matching-subelement
+				   parent-element subelement)))
+    (if matching-slot-definition
+	(setf (slot-value-using-class (class-of element)
+				      element
+				      matching-slot-definition)
+	      value)
+	(restart-case (error (make-condition 'encountered-unmatched-subelement))
+	  (continue ()))))
+;  (format t "Should be assigning a sub element right now...~%")
+  )
+
+(defmethod assign-subelement ((parent-element element-class) subelement)
+  (format t "Nothing happens when attempting to assign subelements to an
+element class.~%"))
+
 
 (defun make-node-descriptor-from-def-form (def-form)
   "This function can be called with a little work from the standard macro idiom for

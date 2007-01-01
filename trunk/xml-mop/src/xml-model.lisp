@@ -67,8 +67,6 @@ of node-string identifiers."))
   ((subelements :accessor element-slot-subelements :initarg :subelements :initform nil) ;:type named-node-descriptor)
    (attributes :accessor element-slot-attributes :initarg :attributes :initform nil))) ;:type named-node-descriptor)))
 
-;; Now the object system knows to use our new slot definitions when 
-;; dealing with MY-METACLASS, rather than the default ones.
 (defmethod direct-slot-definition-class ((class element-class) &key &allow-other-keys)
   (find-class 'element-direct-slot-definition))
 
@@ -78,7 +76,7 @@ of node-string identifiers."))
 (defun resolve-subelement-descriptor-definition (descriptor-definition)
   "Does not allow multiple descriptor definitions as is the case for a
 node descriptor."
-  (format t "***************DESCRIPTOR DEFINITION**************:~%~A~%" descriptor-definition)
+;  (format t "***************DESCRIPTOR DEFINITION**************:~%~A~%" descriptor-definition)
   (when descriptor-definition
     (apply #'make-instance 'subelement-descriptor
 	   (apply
@@ -102,7 +100,7 @@ node descriptor."
 (defun resolve-node-descriptor-definition (descriptor-definition)
   "Takes either a list of descriptor-definitions or a single
 descriptor definition."
-  (format t "Resolving descriptor definition ~A~%" descriptor-definition)
+;  (format t "Resolving descriptor definition ~A~%" descriptor-definition)
   ; determine if this is a single definition or many definitions
   ; this is a stupidly complicated logical statement, sorry
   (let ((many (and (listp descriptor-definition)
@@ -141,12 +139,12 @@ descriptor definition."
 		      (ensure-list
 		       (resolve-subelement-descriptor-definition
 			(element-slot-subelement (first direct-slot-definitions)))))))
-      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
+;      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
       (setf (element-slot-attributes effective-slotd)
 	    resolved-attribute-definitions)
       (setf (element-slot-subelements effective-slotd)
 	    resolved-subelement-definitions)
-      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
+;      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
       effective-slotd)))
 
 ;; Instances of MY-METACLASS can have superclasses which are instances
@@ -187,7 +185,7 @@ descriptor definition."
    &key (direct-superclasses '() direct-superclasses-p) tags)
   (declare (dynamic-extent initargs))
 
-  (format t "Reinitializing ~A~% w/direct superclasses? ~A: ~A ~%" (class-name class) direct-superclasses-p direct-superclasses)
+;  (format t "Reinitializing ~A~% w/direct superclasses? ~A: ~A ~%" (class-name class) direct-superclasses-p direct-superclasses)
 
   (let ((initargs (append (list :tags (parse-node-tag-descriptors tags))
 			  initargs)))
@@ -217,13 +215,13 @@ descriptor definition."
 
 
 (defun assign-node-tag-descriptors (node-class parsed-tag-descriptors)
-  (format t "Assigning ~A~% to ~A~%" parsed-tag-descriptors node-class)
+;  (format t "Assigning ~A~% to ~A~%" parsed-tag-descriptors node-class)
   (setf (element-class-tag-descriptors node-class)
 	parsed-tag-descriptors))
 
 (defun parse-node-tag-descriptors (tag-descriptors)
   ;(setf (element-class-tag-descriptors node-class)
-  (format t "resolving tag descriptors ~A~%~A~%" tag-descriptors   (mapcar #'resolve-node-descriptor-definition
+;  (format t "resolving tag descriptors ~A~%~A~%" tag-descriptors   (mapcar #'resolve-node-descriptor-definition
 									   tag-descriptors))
   (mapcar #'resolve-node-descriptor-definition
 	  tag-descriptors))
