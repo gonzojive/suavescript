@@ -31,6 +31,13 @@ for the document."))
 from a cased or uncased string to a handler class or function.  Several descriptors may map to a 
 single element."))
 
+(defclass subelement-descriptor ()
+  ((element-type :initform nil :initarg :element-type :reader descriptor-element-type)
+   (multiple :initform nil :initarg :multiple :reader descriptor-multiple)
+   (aliases :initform nil :initarg :aliases :reader descriptor-tag-aliases
+	    :documentation "alternative node descriptors for this subelement."))
+  (:documentation "Describes a subelement associated with a slot on an element class."))
+
 (defclass xml-treenode-class (standard-class)
   ((allowed-elements :initarg :allowed-elements :initform nil :accessor node-class-allowed-elements)
    (parser :reader element-class-parser :initarg :parser :initform (make-instance 'standard-parser))))
@@ -40,7 +47,9 @@ single element."))
 ;(defmethod initialize-instance :around (&rest initargs &key allowed-elements
 
 (defclass element-class (xml-treenode-class)
-  ((tags :accessor element-class-tag-descriptors :initarg :tags :initform nil))
+  ((tags :accessor element-class-tag-descriptors :initarg :tags :initform nil)
+   (auto :accessor element-class-auto :initarg :auto :initform t)
+   (reduces-to :accessor element-class-reduces-to :initarg :reduces-to :initform nil))
   (:documentation "A metaclass for XML elements.  An additional option that
 can be passed to element classes is the :tags option, which accepts a sequence
 of node-string identifiers."))
@@ -66,6 +75,30 @@ of node-string identifiers."))
 (defmethod effective-slot-definition-class ((class element-class) &key &allow-other-keys)
   (find-class 'element-effective-slot-definition))
 
+(defun resolve-subelement-descriptor-definition (descriptor-definition)
+  "Does not allow multiple descriptor definitions as is the case for a
+node descriptor."
+  (format t "***************DESCRIPTOR DEFINITION**************:~%~A~%" descriptor-definition)
+  (when descriptor-definition
+    (apply #'make-instance 'subelement-descriptor
+	   (apply
+	    #'parse-subelement-descriptor-aliases
+	    (if (keywordp (first descriptor-definition))
+		descriptor-definition
+		(append (list :element-type)
+			descriptor-definition))))))
+
+(defun ensure-list (my-list)
+  (if (listp my-list)
+      my-list
+      (list my-list)))
+
+(defun parse-subelement-descriptor-aliases (&key element-type alias multiple)
+  (let ((aliases (ensure-list
+		  (resolve-node-descriptor-definition
+		   (ensure-list alias)))))
+    (list :element-type element-type :aliases aliases :multiple multiple)))
+
 (defun resolve-node-descriptor-definition (descriptor-definition)
   "Takes either a list of descriptor-definitions or a single
 descriptor definition."
@@ -79,12 +112,13 @@ descriptor definition."
     (if many
 	(mapcar #'resolve-node-descriptor-definition
 		descriptor-definition)
-	(if (stringp descriptor-definition)
-	    (make-instance 'named-node-descriptor
-			   :matcher descriptor-definition)
-	    (apply #'make-instance 'named-node-descriptor
-		   :matcher (first descriptor-definition)
-		   (rest descriptor-definition))))))
+	(when (not (null descriptor-definition))
+	  (if (stringp descriptor-definition)
+	      (make-instance 'named-node-descriptor
+			     :matcher descriptor-definition)
+	      (apply #'make-instance 'named-node-descriptor
+		     :matcher (first descriptor-definition)
+		     (rest descriptor-definition)))))))
 	
 ;; Initialize the effective slot.
 (defmethod compute-effective-slot-definition ((class element-class) slot-name direct-slot-definitions)
@@ -96,18 +130,23 @@ descriptor definition."
 		 (list possible-list))))
     (let ((effective-slotd (call-next-method)) ;let CLOS do the lifting
 	  (resolved-attribute-definitions
-	   (ensure-list
-	    (resolve-node-descriptor-definition
-	     (ensure-list
-	      (element-slot-attribute (first direct-slot-definitions))))))
+	   (remove-if #'null
+		      (ensure-list
+		       (resolve-node-descriptor-definition
+			(ensure-list
+			 (element-slot-attribute (first direct-slot-definitions)))))))
+
 	  (resolved-subelement-definitions
-	   (ensure-list
-	    (resolve-node-descriptor-definition
-	     (element-slot-subelement (first direct-slot-definitions))))))
+	   (remove-if #'null
+		      (ensure-list
+		       (resolve-subelement-descriptor-definition
+			(element-slot-subelement (first direct-slot-definitions)))))))
+      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
       (setf (element-slot-attributes effective-slotd)
 	    resolved-attribute-definitions)
       (setf (element-slot-subelements effective-slotd)
 	    resolved-subelement-definitions)
+      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
       effective-slotd)))
 
 ;; Instances of MY-METACLASS can have superclasses which are instances
@@ -116,7 +155,7 @@ descriptor definition."
   t)
 
 (defclass element ()
-  ()
+  ((text :initarg :text :initform nil :accessor element-text))
   (:metaclass element-class))
 
 ;; the following code gives objects with element-class as their metaclass
@@ -148,15 +187,16 @@ descriptor definition."
    &key (direct-superclasses '() direct-superclasses-p) tags)
   (declare (dynamic-extent initargs))
 
-  (format t "Reinitializing ~A~% w/direct superclasses? ~A: ~A ~%" class direct-superclasses-p direct-superclasses)
+  (format t "Reinitializing ~A~% w/direct superclasses? ~A: ~A ~%" (class-name class) direct-superclasses-p direct-superclasses)
 
   (let ((initargs (append (list :tags (parse-node-tag-descriptors tags))
 			  initargs)))
     (if direct-superclasses-p
 	;; if direct superclasses are explicitly passed
 	;; this is exactly like above
-	(if (loop for class in direct-superclasses
-		  thereis (subtypep class (find-class 'element)))
+	(if (or (loop for class in direct-superclasses
+		      thereis (subtypep class (find-class 'element)))
+		(eql 'element (class-name class)))
 
 	    (progn
 	      (apply #'call-next-method class 

@@ -1,40 +1,33 @@
 (in-package :xml-mop)
 
-(defclass abstract-base-response ()
-  ((items :accessor ecs-response-items :initform nil :initarg :items
-	  :element (items :multiple t)
-	  :subelement ("Items" :case-sensitive t :element-type items :multiple nil)))
+(defclass abstract-root-response ()
+  ((items :accessor response-items :initform nil :initarg :items
+	  :subelement (:element-type items :multiple t)))
+;	  :subelement ("Items" :case-sensitive t :element-type items :multiple nil)))
   (:metaclass element-class)
   (:allowed-elements price-element))
 
-(defclass items ()
-  ()
-  (:metaclass element-class))
-
-(defclass ecs-response-document ()
-  ()
-  (:metaclass element-class)
-  (:allowed-elements abstract-base-response))
-
-(defclass item-search-response (abstract-base-response)
+(defclass item-search-response (abstract-root-response)
   ()
   (:metaclass element-class)
   (:tags ("ItemSearchResponse" :primary t)))
 
+(defclass items ()
+  ()
+  (:tags ("Items" :primary t))
+  (:metaclass element-class))
+
 (defclass price-element ()
   ((currency-code :accessor price-currency-code
 		  :initarg :currency-code
-		  :attribute ("CurrencyCode" :primary t :case-sensitive t)
-		  :attribute ("Bogus")
-;		  :attribute "currency-code"
-;		  :attribute "currencyCode"
+;		  :attribute ("CurrencyCode" :primary t :case-sensitive t)
 		  ))
   (:metaclass element-class)
   (:tags ("Price" :primary t :case-sensitive nil)
 	 ("PriceElement" :case-sensitive nil)))
 
 (with-open-file (stream "examples/simple-aws.xml")
-  (parse-xml-stream stream (find-class 'ecs-response-document)))
+  (parse-xml-stream stream (list (find-class 'item-search-response))))
 
 ;(defclass item-element ()
 ;  ((asin :accessor item-asin :initform "" :initarg :asin)
