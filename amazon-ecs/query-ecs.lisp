@@ -1,4 +1,6 @@
 (in-package :org.iodb.amazon.ecs)
+;;; this file contains functions for making queries to the amazon
+;;; e-commerce service.
 
 (defconstant +amazon-en-base-url+
   "http://webservices.amazon.com/onca/xml?Service=AWSECommerceService")
@@ -47,12 +49,3 @@
 				     (:aws-key :a-w-s-access-key-id)
 				     (:associate-id :associate-tag))))
 	  "&")) "&"))
-
-(defun generate-ecs-url-old (&key aws-key associate-id operation keywords search-index)
-  "Generates an amazon URL given a bunch of arguments."
-    (format nil "&AWSAccessKeyId=~A&Operation=~A&AssociateTag=~A&Keywords=~A&SearchIndex=~A"
-	    aws-key operation associate-id keywords search-index))
-
-
-(defun read-response-xml (response-xml)
-  (xml:read response-xml))
