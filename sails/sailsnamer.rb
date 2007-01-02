@@ -18,12 +18,10 @@ module Sails
       downcase
     end
   end
+
   class Namer
     def initialize(path)
       @path = path
     end
-    
-    
-    
   end
 end

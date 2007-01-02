@@ -1,7 +1,11 @@
-require 'sails/sailsparse'
-require 'sails/sailsnamer'
+$LOAD_PATH << File.expand_path(File.dirname(__FILE__))
+
+require 'sailsparse'
+require 'sailsnamer'
 require 'pathname'
 require 'erb'
+
+SAILS_PATH = File.expand_path(File.dirname(__FILE__)) + "/"
 
 module Sails
   module Config
@@ -41,14 +45,17 @@ module Sails
     def build_sail(sail_config)
       if anything_to_compile?(sail_config)
         puts "Building sail #{sail_config.class_name} into #{sail_config.dest_path}.."
-        dest = File.new(sail_config.dest_path, "w")
-        incorporated_str = ""
-        views_str = ""
-        build_incorporated(sail_config, incorporated_str)
-        build_views(sail_config, views_str)
-        dest << ERB.new(File.new("sails/templates/built.template.rjs").read).result(binding)
-        dest.fsync
+        File.open(sail_config.dest_path, "w") do |dest|
+          incorporated_str = ""
+          views_str = ""
+          build_incorporated(sail_config, incorporated_str)
+          build_views(sail_config, views_str)
+          dest << ERB.new(File.new("#{SAILS_PATH}templates-paren/built.template.rjs").read).result(binding)
+        end
         puts "wrote #{sail_config.class_name} to #{sail_config.dest_path}"
+        true
+      else
+        false
       end
     end
     
@@ -100,16 +107,15 @@ module Sails
   
   
   class AutoBuilder < Builder
-    def compile_directory(path, recursive = false)
+    def compile_directory(path, recursive = false, built_file_paths = nil)
       dir = Pathname.new(path)
       #puts "traversing path #{dir}"
       dest_path = format_dest_path(dir)
-      
       name_of_sail = Inflector::camelize(dir.basename.to_s)
       config = Config::Sail.new(dir, dest_path, name_of_sail)
       dir.children.each do |src_path|
         if src_path.directory?
-          compile_directory(src_path, true) if recursive && include_directory?(src_path)
+          compile_directory(src_path, true, built_file_paths) if recursive && include_directory?(src_path)
         else
           if compile_as_view?(config, src_path)
             config.views.push(Config::View.new(config, src_path))
@@ -118,17 +124,16 @@ module Sails
           end
         end
       end
-      build_sail(config)
+      if build_sail(config)
+        built_file_paths << dest_path if built_file_paths # push the name of the built file onto built file list
+      end
     end
     
     protected
     def include_directory?(path)
-      if (path.basename.to_s =~ /^\./)
-        return false
-      else
-        return true
-      end
+      (path.basename.to_s =~ /^\./) ? false : true
     end
+
     def format_dest_path(src_path)
       dir = src_path.directory? ? src_path : src_path.dirname
       dir + (base_sail_name(src_path) + ".built.js")
@@ -149,7 +154,23 @@ module Sails
   end
 end
 
-throw "Expected at least one argument which is the directory to compile" if ARGV.empty?
+if ARGV.empty?
+  puts "USAGE: ruby sails/sailsbuild.rb SAILS_DIRECTORY"
+  puts "Accepts one argument which is the directory to compile"
+  exit
+end
+
+
+def concat_sail_files(built_paths)
+  File.open("#{ARGV[0]}/all-sails.built.js", "w") do |fout|
+    built_paths.each do |built_fname|
+      fout.write(File.open(built_fname).read)
+    end
+  end
+end
 
 builder = Sails::AutoBuilder.new
-builder.compile_directory(ARGV[0], true)
+built_paths = Array.new
+builder.compile_directory(ARGV[0], true, built_paths)
+concat_sail_files(built_paths)
+puts "Wrote #{built_paths.length} sail#{built_paths.length == 1 ? '' : 's'} to all-sails.built.js"

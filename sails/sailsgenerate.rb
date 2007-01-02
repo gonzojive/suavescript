@@ -1,13 +1,17 @@
+$LOAD_PATH << File.expand_path(File.dirname(__FILE__))
+puts File.expand_path(File.dirname(__FILE__))
 require 'erb'
 require 'fileutils'
 require 'pathname'
-require 'sails/sailsnamer'
+require 'sailsnamer'
 
+SAILS_PATH = File.expand_path(File.dirname(__FILE__)) + "/"
+TEMPLATES_PATH = "#{SAILS_PATH}templates-paren/"
 module Sails
   #helps generate sails
   module Skeleton
     def templates_root
-      return "./sails/templates/"
+      TEMPLATES_PATH
     end
     def template_for(template_type)
       fname = nil
