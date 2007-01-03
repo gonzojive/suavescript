@@ -1,3 +1,22 @@
+(defun global-type-handler (descriptor)
+  (let ((clazz (slot-value window descriptor)))
+    (if (and clazz clazz.js
+
+(defun marshall-rjson (type arg)
+  (let ((lookup-table (create "Person" (lambda (obj) (new (-Person obj.name obj.email))))))
+    (if (slot-value lookup-table type)
+	(return ((slot-value lookup-table type))))))
+
+(defun eval-rjson (rjson-text)
+  (let ((xref-table (create))
+	(xtype-with-objects (create))
+	(xdecl (lambda (name value)
+		 (return (setf (slot-value xref-table name) value))))
+	(xref (lambda (name)
+		(return (slot-value xref-table name))))
+	(xtype marshall-rjson))
+    (return (eval (+ "(" rjson-text ")")))))
+
 (defun2 link-supers-to-subclass (direct-superclasses subclass)
   (dolist (sclass direct-superclasses)
     (if sclass.direct-subclasses

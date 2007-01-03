@@ -10,6 +10,10 @@
   :license "GPL version 2: http://www.gnu.org/licenses/gpl.html"
   :components ((:module "lisp-src"
                         :components ((:file "packages")
-				     (:file "psos-macrology" :depends-on ("packages"))
+				     (:file "rjson" :depends-on ("packages"))
+				     (:file "lisp-integration" :depends-on ("rjson"))
+				     (:file "net-transmit" :depends-on ("lisp-integration"))
+				     (:file "util-macrology" :depends-on ("packages"))
+				     (:file "psos-macrology" :depends-on ("util-macrology" "lisp-integration"))
                                      )))
-  :depends-on ("parenscript"))
+  :depends-on ("parenscript" "closer-mop"))

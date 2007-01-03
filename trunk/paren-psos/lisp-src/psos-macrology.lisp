@@ -1,57 +1,33 @@
 (in-package org.iodb.paren-psos)
 
-(defparameter *client-debug* t)
-(defun client-debug () *client-debug*)
-(js:defjsmacro alert (message)
-  `(log ,message :warn))
-(js:defjsmacro defun2 (formal-name arguments &rest body)
-  `(js:defvar ,formal-name (lambda ,arguments ,@body)))
+(defvar *include-documentation* nil)
 
-(js:defjsmacro effective-throw (error-obj)
-  `(progn
-    (log ,error-obj :error)
-    (console.trace)
-    (throw ,error-obj)))
+(defun parse-direct-slot (slot-name &key reader writer accessor documentation)
+  "Parses a direct-slot form and returns a psos-direct-slot-definition.
+This doesn't handle multiple readers and writers."
+  (declare (ignore accessor) (ignore writer) (ignore reader))
+  (make-instance 'psos-direct-slot-definition
+		 :name slot-name
+		 :documentation documentation))
 
-(js:defjsmacro log (message &optional level (scalar-level 100))
-  (if (and (client-debug)
-;	   nil)
-	   t)
-;	   (or (> scalar-level 10000) (eql :error level)))
-;	   (or (> scalar-level 101) (equal :error level) (equal :warn level)))
-      `(if console
-	,(case level
-	  (:error `(console.error ,message))
-	  (:warn `(console.warn ,message))
-	  (:warning `(console.warn ,message))
-	  ((:info nil) `(console.info ,message)))
-	,(if (eql level :error)
-	     `(window.alert ,message)))
-      (values)))
-	
+(defun parse-class-options (options)
+  options)
 
-(js:defjsmacro debug-time-start (str)
-  (if *client-debug*
-      `(if console (console.time ,str))))
-
-(js:defjsmacro debug-time-end (str)
-  (if *client-debug*
-      `(if console (console.time-end ,str))))
-
-(js:defjsmacro with-debug-timer (str &rest body)
-  `(progn
-    (debug-time-start ,str)
-    ,@body
-    (debug-time-end ,str)))
-
-(js:defjsmacro defclass (class-name &optional superclasses direct-slots options)
-  
-  `(progn
-    (setf ,class-name (create-class 
-		       ,(js:js-to-string class-name)
-		       ,(if (null superclasses)
-			    nil
-			    `(array ,@superclasses))))))
+(js:defjsmacro defclass (class-name &optional superclasses direct-slots &rest options)
+  (expand-psos-definition
+   (let ((psos-class
+	  (make-instance 'psos-class-definition
+			 :name class-name
+			 :options (parse-class-options options)
+			 :direct-superclasses superclasses
+			 :direct-slot-definitions
+			 (mapcar #'(lambda (dslot)
+				     (apply #'parse-direct-slot dslot))
+				 direct-slots))))
+     (mapc #'(lambda (dslot) (setf (psos-slot-class dslot)
+				   psos-class))
+	   (classdef-direct-slot-definitions psos-class))
+     psos-class)))
 
 (js:defjsmacro defaultf (place default-val)
   `(setf ,place (or ,place ,default-val)))
@@ -60,11 +36,10 @@
   `(defvar ,formal-name (ensure-generic ,formal-name ,(js:js-to-string formal-name))))
 
 (defun parse-defjsmethod-args (args)
-  (let ((fn-name (first args))
-	(qualifiers nil)
-	(lambda-list nil)
-	(specializers nil)
-	(body nil))
+  "Parses defmethod arguments, which fit the grammar
+(name method-qualifier? specialized-argument-list body-forms)"
+  (let ((fn-name (first args)) (qualifiers nil)	(lambda-list nil)
+	(specializers nil)     (body nil))
     (if (keywordp (second args))
 	(progn
 	  (push (second args) qualifiers)
@@ -99,22 +74,6 @@
 	,@body)
       ,(js:js-to-string (or (first method-qualifiers)
 			    :primary))))))
-
-(js:defjsmacro dolist2 (i-array &rest body)
-  (js:with-unique-js-names (arrvar idx)
-    (let ((var (first i-array))
-	  (array (second i-array))
-	  (direction (or (third i-array) :forward)))
-      `(let ((,arrvar ,array))
-	(do ((,idx
-	      ,@(if (eql :forward direction)
-		    `(0 (1+ ,idx))
-		    `((1- (slot-value ,arrvar 'length)) (1- ,idx)))))
-	    (,(if (eql :forward direction)
-		  `(>= ,idx (slot-value ,arrvar 'length))
-		  `(< ,idx 0)))
-	  (let ((,var (aref ,arrvar ,idx)))
-	    ,@body))))))
 
 (js:defjsmacro call-next-method (&rest args)
   `(this.call-following-method ,@args))
