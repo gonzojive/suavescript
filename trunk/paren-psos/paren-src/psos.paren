@@ -1,7 +1,3 @@
-(defun global-type-handler (descriptor)
-  (let ((clazz (slot-value window descriptor)))
-    (if (and clazz clazz.js
-
 (defun marshall-rjson (type arg)
   (let ((lookup-table (create "Person" (lambda (obj) (new (-Person obj.name obj.email))))))
     (if (slot-value lookup-table type)
