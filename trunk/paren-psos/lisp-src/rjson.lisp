@@ -71,8 +71,8 @@
       (setf (gethash object (serialization-history session))
 	    (anchor-index history-object)))
 
-    (when (some #'null (serialization-history-vector *rjson-session*))
-      (error "Should never have null entries in history vector2."))
+;    (when (some #'null (serialization-history-vector *rjson-session*))
+;      (error "Should never have null entries in history vector2."))
 
     (when (null history-object)
       (error "NULL history object, current val ~A : ~A -> ~A~%~A"
@@ -105,52 +105,71 @@ represent-rjson methods."
 				      (represent-rjson object seed)))
 	(if object-in-history?
 	    `(rjson-xref ,object-anchor)
-	    `(rjson-xdecl ,object-anchor ,(represent-rjson object seed)))
-	(represent-rjson object seed))))
+	    `(rjson-xdecl ,object-anchor)))
+      ; not cross-referencable
+      (represent-rjson object seed)))
+;	      ,(parenscript-form
+;		(serialization-history-entry
+;		 *rjson-session* object-anchor
 
-(js:defjsmacro rjson-xdecl (index object)
-  "This is an internal parenscript macro used to serialize the generated rjson-
-parenscript forms.  It replaces an (rejson-xdecl index paren-form) with either
-an (xdecl index paren-form) or paren-form depending on whether a cross-ref is
-necessary."
+(defun transform-intermediate-xdecl (index)
   (multiple-value-bind (parenscript-form history-object)
       (serialization-xref *rjson-session* index)
-    (when (some #'null (serialization-history-vector *rjson-session*))
-      (error "Should never have null entries in history vector"))
+;    (when (some #'null (serialization-history-vector *rjson-session*))
+;      (error "Should never have null entries in history vector"))
     (when (null history-object)
-      (error "INVALID HISTOROY OBJECT HOW THIS HAPPEN? ~A~%~A" index
-	      (serialization-history-vector *rjson-session*)))
-    (format t "parenscript form ~A~%"	  parenscript-form)
+      (error "INVALID HISTOROY OBJECT HOW did THIS HAPPEN? ~A~%~A" index
+	     (serialization-history-vector *rjson-session*)))
     (let ((refcount (refcount history-object)))
-;      (format t "REFCOUNT: ~A~%" refcount)
       (if (= 1 refcount)
 	  parenscript-form
 	  `(xdecl
 	    ,index
-	    ,(serialization-declare-xref *rjson-session* index object))))))
-  
+	    ,parenscript-form)))))
+
+(js:defjsmacro rjson-xdecl (index &optional object)
+  (declare (ignore object))
+  "This is an internal parenscript macro used to serialize the generated rjson-
+parenscript forms.  It replaces an (rejson-xdecl index paren-form) with either
+an (xdecl index paren-form) or paren-form depending on whether a cross-ref is
+necessary."
+  (transform-intermediate-xdecl index))
+
+(defun transform-intermediate-xref (index)
+  `(xref ,index))
+
 (js:defjsmacro rjson-xref (index)
   "This is an internal parenscript macro used to serialize the generated rjson-
 parenscript forms.  It replaces an (rejson-xdecl index) with either
 an (xref index) or raw paren-form depending on whether a cross-ref is necessary."
-  `(xref ,index))
+  (transform-intermediate-xref index))
 
 ;;; USER-LEVEL
-(defun write-rjson (object)
+
+(defun write-rjson (object &key (method :fast))
   "Writes an object out as a javascript string.  Calls the customizable
 represent-rjson function on object to determine its parenscript form,
 then serializes the output using the parenscript compiler."
   (let* ((*rjson-session* (make-instance 'rjson-serialization-session))
 	 (result-paren-list (represent object)))
-;    (with-open-file (fout "/tmp/balderdash.lisp" :direction :output :if-exists :supersede)
-;      (print result-paren-list fout))
-;    (js:js-to-string result-paren-list)))
-))
+    (with-open-file (fout "/tmp/balderdash.lisp" :direction :output :if-exists :supersede)
+      (print result-paren-list fout))
+    (case method
+      (:fast (rjson-encode-to-string result-paren-list))
+      (:full (js:js-to-string result-paren-list)))))
+;      
+
 
 (defmethod is-xrefable? (object &optional seed)
   (declare (ignore object) (ignore seed))
   t)
 (defmethod is-xrefable? ((object string) &optional seed)
+  (declare (ignore object) (ignore seed))
+  nil)
+(defmethod is-xrefable? ((object null) &optional seed)
+  (declare (ignore object) (ignore seed))
+  nil)
+(defmethod is-xrefable? ((object symbol) &optional seed)
   (declare (ignore object) (ignore seed))
   nil)
 (defmethod is-xrefable? ((object number) &optional seed)
@@ -168,13 +187,89 @@ then serializes the output using the parenscript compiler."
 	     object)
     (apply #'list 'create (nreverse create-args))))
 
+(defmethod represent-rjson ((object null) &optional seed)
+  (declare (ignore seed))
+  object)
+
 (defmethod represent-rjson ((object sequence) &optional seed)
-  `(array ,@(handler-case (map 'list #'(lambda (obj)
-					 (represent obj seed))
-			       object)
-			  (error () "stupid"))))
+  `(array ,@(handler-case
+	     (map 'list #'(lambda (obj)
+			    (represent obj seed))
+		  object)
+	     (error () (error "Don't know how to handle ~A" object)))))
 			  
 			  
 
 (defmethod represent-rjson ((object string) &optional seed)
   object)
+
+;; encoder below
+
+(defun fast-encode-array (stream &rest args)
+  (write-char #\[ stream)
+  (fast-encode-coma-delimited stream args)
+  (write-char #\] stream))
+
+(defun fast-encode-object (stream &rest args)
+  (write-char #\{ stream)
+  (maplist
+   #'(lambda (sublist)
+       (fast-encode (car (first sublist)) stream)
+       (write-char #\: stream)
+       (fast-encode (cdr (first sublist)) stream)
+       (when (rest sublist)
+	 (write-char #\, stream)))	 
+   (loop for (name val) on args by #'cddr
+	 collect (cons name val)))
+  (write-char #\} stream))
+
+(defun fast-encode-funcall (stream func-name &rest args)
+  (write-string (js:js-to-string func-name) stream)
+  (write-char #\( stream)
+  (fast-encode-coma-delimited stream args)
+  (write-char #\) stream))
+
+(defun fast-encode-coma-delimited (stream forms &optional (form-encoder #'fast-encode))
+  (maplist
+   #'(lambda (sublist)
+       (funcall form-encoder (first sublist) stream)
+       (when (rest sublist)
+	 (write-char #\, stream)))
+   forms))
+
+(defparameter *rjson-forms*
+  '((array . fast-encode-array)
+    (create . fast-encode-object)
+;    (xdecl . fast-encode-funcall)
+;    (xref . fast-encode-funcall)
+    (rjson-xref . fast-encode-intermediate-xref)
+    (rjson-xdecl . fast-encode-intermediate-xdecl) ))
+
+(defun fast-encode-intermediate-xref (stream cross-ref-anchor)
+  (fast-encode (transform-intermediate-xref cross-ref-anchor)
+	       stream))
+
+(defun fast-encode-intermediate-xdecl (stream cross-ref-anchor)
+  (fast-encode (transform-intermediate-xdecl cross-ref-anchor)
+	       stream))
+
+(defun rjson-encode-to-string (parenscript-form)
+  (with-output-to-string (stream)
+    (fast-encode parenscript-form stream)))
+
+(defun fast-encode (form &optional (stream *standard-output*))
+  (if (and (listp form) (not (null form)))
+      (progn
+;	(format t "Attempting to encode form ~A ~A~%" (car form) (cdr (assoc (car form) *rjson-forms*)))
+	(let ((mapped-encoder (cdr (assoc (car form) *rjson-forms*))))
+	  (if mapped-encoder
+	      (apply mapped-encoder stream (rest form))
+	      (progn
+		(format t "funcalling ~A~%" form)
+		(apply #'fast-encode-funcall stream form)))))
+	
+      (progn
+;	(format t "Encoding simple form ~A~%" form)
+	(json::encode-json
+	 (if (symbolp form) (js:js-to-string form) form)
+	 stream))))
