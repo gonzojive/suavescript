@@ -3,23 +3,9 @@ SuaveScript is a collection of tools help people write better software for the w
 
 =Sails=
 
-* The [[Sails]] framework for writing GUI components.  An HTML 'sail' is created with special attributes attached to elements, giving them names that a JavaScript representation of the sail can attach to.  This is similar to Dojo's system, but works by compiling the HTML components into JavaScript ahead of time.  
+The [Sails] framework for writing GUI components.  An HTML 'sail' is created with special attributes attached to elements, giving them names that a JavaScript representation of the sail can attach to.  This is similar to Dojo's system, but works by compiling the HTML components into [JavaScript] ahead of time.  
 
-* The ParenScript Object System is a CLOS-like object system for class- and generic function-based object-oriented programming in web browsers.  This code is not yet in SVN.
-
-There are a few other things that would be neat, but I will probably not have time to do.  The coolest of these is a Javascript -> Parenscript converter--which could be done using JWACS.  Then, it would be need to embed Parenscript into lisp so scripts could be executed on either the browser or the server.
-
-There is also a code graveyard in SVN where a few things are implemented that I do not use at all:
-*JavaScript Templates: Write page templates using javascript in much the same way as JSP, ERB (rails), and other template systems work.
-
-= Introduction =
-
-Add your content here.
+=Parenscript Object System=
+The [Parenscript] Object System is a CLOS-like object system for class- and generic function-based object-oriented programming in web browsers.
 
 
-= Details =
-
-Add your content here.  Format your content with:
-  * Text in *bold* or _italic_
-  * Headings, paragraphs, and lists
-  * Automatic links to other wiki pages
