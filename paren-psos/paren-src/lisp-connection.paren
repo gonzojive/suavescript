@@ -1,0 +1,28 @@
+;; this is some additional parenscript functionality
+;; for interacting with lisp processes
+
+(defvar type-lookup-table (create))
+
+(defun marshall-rjson (type arg)
+;  (log (+ "attempting to look up " type "in table, arg val: " arg))
+  (let ((lookup-table type-lookup-table))
+    (when (slot-value lookup-table type)
+      (return ((slot-value lookup-table type))))
+    (when (slot-value window type)
+      (let ((new-obj (new ((slot-value window type) arg))))
+	(merge-into new-obj arg)
+	(return new-obj)))
+;    (log (+ "Failed to find type " type ", returning plain object.") :warn)
+    ; else just return the argument
+    (return arg)))
+
+(defun eval-rjson (rjson-text)
+  (let ((xref-table (create))
+	(xtype-with-objects (create))
+	(xdecl (lambda (name value)
+		 (return (setf (slot-value xref-table name) value))))
+	(xref (lambda (name)
+		(return (slot-value xref-table name))))
+	(xtype marshall-rjson))
+    (return (eval (+ "(" rjson-text ")")))))
+

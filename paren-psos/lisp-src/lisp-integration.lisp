@@ -41,6 +41,7 @@ The compiler can keep track of information that links parenscript to a lisp sess
 			 ,(if (null superclasses)
 			      nil
 			      `(array ,@superclasses))
+			 nil ; place-holder for class slots
 			 (create ,@(apply #'append options))))
       ,@(mapcar #'expand-psos-definition slot-definitions))))
   
@@ -61,6 +62,8 @@ The compiler can keep track of information that links parenscript to a lisp sess
   (intern (string-upcase
 	   (apply #'format nil format-string format-args))))
 
+;(defun expand-psos-slot-definition (slot-
+
 (defmethod expand-psos-definition ((slot-definition psos-direct-slot-definition))
   (let ((accessors-output-convention :java))
     (with-accessors ((slot-name psos-slot-name) (slot-class psos-slot-class)
@@ -75,13 +78,16 @@ The compiler can keep track of information that links parenscript to a lisp sess
 			   (return (slot-value obj ,slot-name))))
 		     readers)))
 	(:java
-	 `(progn
-	   (defmethod ,(js-format-symbol "get-~A" slot-name)
-	       ((obj ,(classdef-name slot-class)))
-	     (return (slot-value obj ,slot-name)))
-	   (defmethod ,(js-format-symbol "set-~A" slot-name)
-	       ((obj ,(classdef-name slot-class)) value)
-	     (setf (slot-value obj ,slot-name) value ))))))))
+	 (let ((slot-form
+		`(slot-value obj
+		  (quote ,(js-format-symbol "~A" slot-name)))))
+	   `(progn
+	     (defmethod ,(js-format-symbol "get-~A" slot-name)
+		 ((obj ,(classdef-name slot-class)))
+	       (return ,slot-form))
+	     (defmethod ,(js-format-symbol "set-~A" slot-name)
+		 ((obj ,(classdef-name slot-class)) value)
+	       (return (setf ,slot-form value)))) ))))))
 
 
 (defclass psos-class-import ()
@@ -100,7 +106,8 @@ The compiler can keep track of information that links parenscript to a lisp sess
 	 (make-instance 'psos-class-definition
 			:name (or alias (class-name lisp-class))
 			:options nil
-			:direct-superclasses nil
+			:direct-superclasses (mapcar #'(lambda (class) (class-name class))
+						     (class-direct-superclasses lisp-class))
 			:direct-slot-definitions (mapcar #'import-lisp-slot-definition
 							 (class-direct-slots lisp-class))
 			:documentation (documentation lisp-class t))))

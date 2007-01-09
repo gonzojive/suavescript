@@ -146,17 +146,23 @@ an (xref index) or raw paren-form depending on whether a cross-ref is necessary.
 
 ;;; USER-LEVEL
 
-(defun write-rjson (object &key (method :fast))
+(defun encode-rjson-string (object &key (method :fast))
   "Writes an object out as a javascript string.  Calls the customizable
 represent-rjson function on object to determine its parenscript form,
-then serializes the output using the parenscript compiler."
+then serializes the output using the parenscript compiler.
+
+The method keyword argument can be either :fast or :full.  if :full is
+specified then the (slow) parenscript compiler is used.  otherwise, a custom
+rjson compiler is used.  the difference in speed right now is approximately
+200x and memory allocation 120x."
   (let* ((*rjson-session* (make-instance 'rjson-serialization-session))
 	 (result-paren-list (represent object)))
     (with-open-file (fout "/tmp/balderdash.lisp" :direction :output :if-exists :supersede)
       (print result-paren-list fout))
-    (case method
-      (:fast (rjson-encode-to-string result-paren-list))
-      (:full (js:js-to-string result-paren-list)))))
+    (time
+     (case method
+       (:fast (rjson-encode-to-string result-paren-list))
+       (:full (js:js-to-string result-paren-list))))))
 ;      
 
 
@@ -199,7 +205,6 @@ then serializes the output using the parenscript compiler."
 	     (error () (error "Don't know how to handle ~A" object)))))
 			  
 			  
-
 (defmethod represent-rjson ((object string) &optional seed)
   object)
 
@@ -208,11 +213,12 @@ then serializes the output using the parenscript compiler."
 (defun fast-encode-array (stream &rest args)
   (write-char #\[ stream)
   (fast-encode-coma-delimited stream args)
-  (write-char #\] stream))
+  (write-char #\] stream)
+  (values))
 
 (defun fast-encode-object (stream &rest args)
   (write-char #\{ stream)
-  (maplist
+  (mapl
    #'(lambda (sublist)
        (fast-encode (car (first sublist)) stream)
        (write-char #\: stream)
@@ -221,21 +227,24 @@ then serializes the output using the parenscript compiler."
 	 (write-char #\, stream)))	 
    (loop for (name val) on args by #'cddr
 	 collect (cons name val)))
-  (write-char #\} stream))
+  (write-char #\} stream)
+  (values))
 
 (defun fast-encode-funcall (stream func-name &rest args)
   (write-string (js:js-to-string func-name) stream)
   (write-char #\( stream)
   (fast-encode-coma-delimited stream args)
-  (write-char #\) stream))
+  (write-char #\) stream)
+  (values))
 
 (defun fast-encode-coma-delimited (stream forms &optional (form-encoder #'fast-encode))
-  (maplist
+  (mapl
    #'(lambda (sublist)
        (funcall form-encoder (first sublist) stream)
        (when (rest sublist)
 	 (write-char #\, stream)))
-   forms))
+   forms)
+  (values))
 
 (defparameter *rjson-forms*
   '((array . fast-encode-array)
@@ -258,6 +267,8 @@ then serializes the output using the parenscript compiler."
     (fast-encode parenscript-form stream)))
 
 (defun fast-encode (form &optional (stream *standard-output*))
+  "Encodes a parenscript form into javascript-compatable notation.
+This take place after the initial history bookeeping has been performed."
   (if (and (listp form) (not (null form)))
       (progn
 ;	(format t "Attempting to encode form ~A ~A~%" (car form) (cdr (assoc (car form) *rjson-forms*)))
@@ -265,7 +276,7 @@ then serializes the output using the parenscript compiler."
 	  (if mapped-encoder
 	      (apply mapped-encoder stream (rest form))
 	      (progn
-		(format t "funcalling ~A~%" form)
+;		(format t "funcalling ~A~%" form)
 		(apply #'fast-encode-funcall stream form)))))
 	
       (progn

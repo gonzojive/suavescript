@@ -10,10 +10,14 @@ if the slot should not be included."))
 
 (defmethod represent-slot ((object standard-object) slot  &optional seed)
   (declare (ignore seed))
-  (cons (js:js-to-string (slot-definition-name slot))
-	(represent (if (slot-boundp-using-class (class-of object) object slot)
-		       (slot-value-using-class (class-of object) object slot)
-		       'undefined))))
+  (let ((value
+	 (if (slot-boundp-using-class (class-of object) object slot)
+	     (slot-value-using-class (class-of object) object slot)
+	     'undefined)))
+    (if (or (null value) (eql 'undefined value))
+	nil
+	(cons (js:js-to-string (slot-definition-name slot))
+	      (represent value)))))
 
 (defmethod represent-rjson ((object structure-object) &optional seed)
   "Represents an object's slots and such in an RJSON-compatible way."

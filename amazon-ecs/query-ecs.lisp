@@ -2,7 +2,7 @@
 ;;; this file contains functions for making queries to the amazon
 ;;; e-commerce service.
 
-(defconstant +amazon-en-base-url+
+(defun base-ecs-url (language-code)
   "http://webservices.amazon.com/onca/xml?Service=AWSECommerceService")
 
 (defun join-string-list (string-list &optional (delimiter ""))
@@ -39,7 +39,7 @@
 			 ispu-postal-code version)
   "Generates an ECS url with the supplied parameters."
   (join-string-list
-   (list +amazon-en-base-url+
+   (list (base-ecs-url "en")
 	 (join-string-list
 	  (remove-if #'null 
 		     (urlize-keys
@@ -49,3 +49,31 @@
 				     (:aws-key :a-w-s-access-key-id)
 				     (:associate-id :associate-tag))))
 	  "&")) "&"))
+
+(defun parse-response-stream (response-stream)
+  (first
+   (xml-mop::parse-xml-stream response-stream
+			      (list (find-class 'item-lookup-response)
+				    (find-class 'item-search-response)))))
+
+
+(defun perform-amazon-search (query-url)
+  (parse-response-stream
+   (third (trivial-http:http-get query-url))))
+
+
+(defgeneric official-amazon-offer? (offer)
+  (:documentation "Returns whether or not the offer is an official amazon offer."))
+
+(defmethod official-amazon-offer? ((offer offer))
+  (string-equal (merchant-id (offer-merchant offer))
+		"ATVPDKIKX0DER"))
+
+(defgeneric item-official-amazon-offer  (item)
+  (:documentation "Returns the first official amazon offer for the item."))
+
+(defmethod item-official-amazon-offer ((item amazon-item))
+  (find-if #'ecs:official-amazon-offer?
+	   (and (ecs:item-offers item)
+		(ecs:offers (ecs:item-offers item)))))
+		
