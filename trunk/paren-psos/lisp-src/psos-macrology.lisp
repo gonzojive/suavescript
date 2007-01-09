@@ -32,83 +32,45 @@ This doesn't handle multiple readers and writers."
 (js:defjsmacro defaultf (place default-val)
   `(setf ,place (or ,place ,default-val)))
 
-(js:defjsmacro defgeneric (formal-name)
+(js:defjsmacro defgeneric (formal-name &body options)
+  (declare (ignore options))
   `(defvar ,formal-name (ensure-generic ,formal-name ,(js:js-to-string formal-name))))
 
 (defun parse-defjsmethod-args (args)
-  "Parses defmethod arguments, which fit the grammar
-(name method-qualifier? specialized-argument-list body-forms)"
-  (let ((fn-name (first args)) (qualifiers nil)	(lambda-list nil)
-	(specializers nil)     (body nil))
-    (if (keywordp (second args))
-	(progn
-	  (push (second args) qualifiers)
-	  (setf lambda-list (third args))
-	  (setf body (subseq args 3)))
-	(progn
-	  (setf lambda-list (second args))
-	  (setf body (subseq args 2))))
-    (setf specializers
-	  (mapcar #'(lambda (arg)
-		      (if (listp arg)
-			  (second arg)
-			  nil))
-	    lambda-list))
-    (setf lambda-list
-	  (mapcar #'(lambda (arg)
-		      (if (listp arg)
-			  (first arg)
-			  arg))
-	    lambda-list))
-    (values fn-name qualifiers specializers lambda-list body)))
-    
+  (let* ((name (first args))
+	 (qualifiers? (keywordp (second args)))
+	 (qualifiers (if qualifiers? (list (second args)) nil))
+	 (post-qualifers (if qualifiers? (cddr args) (cdr args)))
+	 (lambda-list (first post-qualifers))
+	 (body (rest post-qualifers)))
+    (multiple-value-bind (requireds optionals rest? rest keys? keys)
+	(paren-psos::parse-lambda-list lambda-list)
+      (labels ((specializer-part (arg-form)
+		 (if (listp arg-form) (second arg-form) nil))
+	       (name-part (arg-form)
+		 (if (listp arg-form) (first arg-form) arg-form)))
+	(let ((specializers (mapcar #'specializer-part requireds))
+	      (normal-lambda-list
+	       (append (mapcar #'name-part requireds)
+		       (when optionals
+			 (apply #'list '&optional optionals))
+		       (when keys?
+			 (apply #'list '&keys keys))
+		       (when rest?
+			 (list '&rest rest)))))
+	  (values name qualifiers specializers
+		  normal-lambda-list body))))))
+
 (js:defjsmacro defmethod (&rest args)
   (multiple-value-bind (formal-name method-qualifiers specializers argument-list body)
       (parse-defjsmethod-args args)
     `(progn
       (defvar ,formal-name (ensure-generic ,formal-name ,(js:js-to-string formal-name)))
-      (create-method
-      ,formal-name
-      (array ,@specializers)
-      (lambda ,argument-list
+      (create-method ,formal-name (array ,@specializers)
+       (lambda2 ,argument-list
 	,@body)
       ,(js:js-to-string (or (first method-qualifiers)
 			    :primary))))))
 
 (js:defjsmacro call-next-method (&rest args)
   `(this.call-following-method ,@args))
-
-(js:defjsmacro doelements (heading &rest body)
-  (let ((varname (first heading)))
-    `(dolist ,heading
-      (if (not (slot-value ,varname 'tag-name))
-	  (continue))
-      ,@body)))
-
-(js:defjsmacro def-rdf-aliases (&rest aliases)
-  (let ((result `(progn)))
-    (dolist (alias aliases)
-      (push `(def-rdf-alias ,alias) result))
-    (nreverse result)))
-    
-(js:defjsmacro def-rdf-alias (alias &optional str)
-  (let ((resource-id-str (concatenate
-			  'string
-			  "#"
-			  (js:js-to-string
-			   (intern
-			    (concatenate 'string "-" (string alias))))))
-	(resource-id-str2 (concatenate
-			   'string
-			   "#"
-			   (js:js-to-string alias))))
-    `(defvar ,alias ,(if str
-			 `(lookup-rdf-resource ,(concatenate 'string "#" str))
-			 `(or (lookup-rdf-resource ,resource-id-str)
-			   (lookup-rdf-resource ,resource-id-str2))))))
-		     
-  
-(js:defjsmacro defrdfclass (class-name rdf-tag &rest args)
-  `(progn
-    (defjsclass ,class-name ,@args)
-    (set-rdf-resource ,rdf-tag ,class-name)))

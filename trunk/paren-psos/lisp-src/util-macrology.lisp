@@ -2,8 +2,6 @@
 (defun client-debug () *client-debug*)
 (js:defjsmacro alert (message)
   `(log ,message :warn))
-(js:defjsmacro defun2 (formal-name arguments &rest body)
-  `(js:defvar ,formal-name (lambda ,arguments ,@body)))
 
 (js:defjsmacro effective-throw (error-obj)
   `(progn
@@ -58,3 +56,58 @@
 		  `(< ,idx 0)))
 	  (let ((,var (aref ,arrvar ,idx)))
 	    ,@body))))))
+
+(defun parse-extended-function (lambda-list body &optional name)
+  "Returns the effective body for a function with the given lambda-list and body."
+  (declare (ignore name))
+  (labels ((default-part (arg) (if (listp arg) (second arg)))
+	   (name-part (arg) (if (listp arg) (first arg) arg)))
+    (multiple-value-bind (requireds optionals rest? rest keys? keys)
+	(paren-psos::parse-lambda-list lambda-list)
+      (format t "~A .." rest)
+      (let* ((options-var 'options)
+	     (defaulting-args ;an alist of arg -> default val
+		 (remove-if
+		  #'null (mapcar #'(lambda (arg) (when (default-part arg)
+						   (cons (name-part arg) (default-part arg))))
+				 (append requireds optionals keys))))
+	     (arg-names (mapcar #'name-part
+				(append requireds optionals)))
+	     (effective-args (append arg-names
+				     (if keys? (list options-var))))
+	     (body-with-defaulters
+	      (append (mapcar #'(lambda (default-pair)
+				  `(defaultf ,(car default-pair) ,(cdr default-pair)))
+			      defaulting-args)
+		      body))		    
+	     (effective-body
+	      (if rest?
+		  (append (list `(defvar ,rest ((slot-value (to-array arguments) 'slice)
+						,(length effective-args))))
+			  body-with-defaulters)
+		  body-with-defaulters))
+	     (effective-body
+	      (if keys?
+		  (list `(with-slots ,(mapcar #'name-part keys) ,options-var
+			  ,@effective-body))
+		  effective-body)))
+	(values effective-args effective-body)))))
+
+
+(js:defjsmacro defun2 (formal-name lambda-list &body body)
+  "An extended defun macro that allows cool things like keyword arguments."
+  (multiple-value-bind (effective-args effective-body)
+      (parse-extended-function lambda-list body formal-name)
+    `(defun ,formal-name ,effective-args
+      ,@effective-body)))
+
+
+(js:defjsmacro lambda2 (lambda-list &body body)
+  "An extended defun macro that allows cool things like keyword arguments."
+  (multiple-value-bind (effective-args effective-body)
+      (parse-extended-function lambda-list body)
+    `(lambda ,effective-args
+      ,@effective-body)))
+  
+;old:  `(js:defvar ,formal-name (lambda ,arguments ,@body)))
+

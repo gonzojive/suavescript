@@ -1,4 +1,4 @@
-The ParenScript Object System is a CLOS-like object system for ParenScript.  There is not that much documentation out there right now.
+The ParenScript Object System is a CLOS-like object system for ParenScript.  Using the system is  very similar to CLOS.  it includes a dynamic runtime environment (found in paren-src/*.paren).
 
 The ParenScript Object System
 Red Daly, Stanford Department of Computer Science

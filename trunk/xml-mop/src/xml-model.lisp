@@ -222,7 +222,7 @@ descriptor definition."
 (defun parse-node-tag-descriptors (tag-descriptors)
   ;(setf (element-class-tag-descriptors node-class)
 ;  (format t "resolving tag descriptors ~A~%~A~%" tag-descriptors   (mapcar #'resolve-node-descriptor-definition
-									   tag-descriptors))
+;  tag-descriptors))
   (mapcar #'resolve-node-descriptor-definition
 	  tag-descriptors))
 

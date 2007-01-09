@@ -40,28 +40,37 @@
 
 (defun2 some (fun arr)
   (dolist (item arr)
-    (if (fun item)
-	(return t)))
+    (let ((result (fun item)))
+      (when result
+	(return result))))
   (return false))
 
+(defaultf -array.prototype.filter
+    (lambda (fun)
+      (return (collect fun this))))
 
-(if (or t (not -Array.prototype.filter))
-    (setf -array.prototype.filter
-	  (lambda (fun)
-	    (return (collect fun this)))))
-(if (or t(not -Array.prototype.every))
-    (setf -array.prototype.every
-	  (lambda (fun)
-	    (return (every fun this)))))
-(if (or t (not -Array.prototype.some))
-    (setf -array.prototype.some
-	  (lambda (fun)
-	    (return (some fun this)))))
+(defaultf -Array.prototype.every
+    (lambda (fun)
+      (return (every fun this))))
 
-(defun2 first-child-elem (xml-elem)
-  (doelements (elem xml-elem.child-nodes)
-    (return elem)))
+(defaultf -array.prototype.some
+	  (lambda (fun)
+	    (return (some fun this))))
+;;; DOM
 
-(defun2 assert-no-children (xml-elem)
-  (if (not (== xml-elem.child-nodes.length 0))
-      (log "Assertion failed: element contains more than 0 child nodes" :warn)))
+;(defun2 first-child-elem (xml-elem)
+;(doelements (elem xml-elem.child-nodes)
+;    (return elem)))
+
+;(defun2 assert-no-children (xml-elem)
+;  (if (not (== xml-elem.child-nodes.length 0))
+;      (log "Assertion failed: element contains more than 0 child nodes" :warn)))
+
+;;; AJAX
+
+;; PORTME FIXME TODO requires the prototype.js library
+(defun2 make-ajax-request (url &key method parameters asynchronous post-body request-headers
+			       on-complete on-exception on-success on-failure)
+  (setf options.on-exception (lambda (exp) (log exp) (throw exp)))
+  (new (-ajax.-request url options)))
+
