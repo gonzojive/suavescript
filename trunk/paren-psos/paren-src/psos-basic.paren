@@ -1,19 +1,12 @@
 (defvar standard-object -Object)
-
 (defun link-supers-to-subclass (direct-superclasses subclass)
   (dolist (sclass direct-superclasses)
     (if sclass.direct-subclasses
 	(sclass.direct-subclasses.push subclass)
 	(setf sclass.direct-subclasses (array subclass)))))
 
-(defun2 std-class-make-instance (class-obj &key name direct-superclasses slot-defs documentation)
-  "Bootstrapping version of make-instance for creating a standard class."
-  )
-;(defun create-class (name direct-superclasses slots-ignored options)  
-  
-(defun ensure-class (class-function name direct-superclasses)
-  "Ensures that a class exists."
-  (return (create-class name direct-superclasses)))
+(defun ensure-class (name direct-superclasses)
+  (return (create-class.apply nil arguments)))
 
 (defun ensure-class-superclasses (class-function direct-superclasses)
   (setf direct-superclasses
