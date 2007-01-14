@@ -87,21 +87,31 @@ entirely possible (e.g. when a standard-funcallable-class is redefined as a stan
 	    (make-instance generic-class options)))))
 
 (defun std-generic-add-method (generic method)
+  (setf generic.cached-method-combo (create)) ; reset method cache hash
   (generic.generic-methods.push method))
 
 (defun2 std-generic-make-instance (generic-class &key name)
   "Makes a standard generic function."
-  (let ((concrete-function (generate-effective-method)))
+  (let ((concrete-function (generate-callable-method)))
     (setf concrete-function.generic-methods (array))
     (setf concrete-function.generic-name name)
+    (setf concrete-function.cached-method-combo (create))
     (setf concrete-function.to-string
 	  (lambda () (return (+ "<PSOS:Generic " concrete-function.generic-name ">"))))
     (return concrete-function)))
 
-(defun2 apply-methods (args-arr primaries befores afters)
+(defun2 apply-std-method-combination (method-combo args-arr)
   "Applies a set of arguments to a bunch of primary, before, and after methods.  These
 primary, before, and after methods are passed in most-specific-first."
-  (let ((ret-val undefined))
+  (when (== 0 method-combo.primaries.length)
+    (console.trace)
+    (log (+ "No applicable methods for generic function call " method-combo.generic.generic-name " with args") :error)
+    (log args-arr :error)
+    (log (args-arr.map class-of) :error))
+  (let ((ret-val undefined)
+	(befores method-combo.befores)
+	(afters method-combo.afters)
+	(primaries (method-combo.primaries.slice 0)))
     (dolist (bmeth befores)
       (bmeth.apply nil args-arr))
     (let ((this-obj
@@ -118,34 +128,45 @@ primary, before, and after methods are passed in most-specific-first."
 			   arguments))) ))))
       (setf ret-val (this-obj.call-following-method)))
     (dolist2 (ameth afters :backward)
-      (ameth.apply nil args-arr))
+	     (ameth.apply nil args-arr))
     (return ret-val)))
 
-(defun2 generate-effective-method ()
+(defun2 compute-effective-method-combination (generic args-arr)
+  (defvar qualifer-matcher 
+    (lambda (str) (return (lambda (meth) (return (== str meth.qualifier))))))
+  (let ((applicable-methods
+	 (compute-applicable-methods generic args-arr))
+	(effective-method-combo
+	 (create :generic generic
+;		:arounds (applicable-methods.filter
+;			    (lambda (meth) (return (== meth.qualifier "around"))))
+		 :primaries (applicable-methods.filter (qualifer-matcher "primary"))
+		 :befores (applicable-methods.filter (qualifer-matcher "before"))
+		 :afters (applicable-methods.filter (qualifer-matcher "after")))))
+    (return effective-method-combo)))
+    
+(defun2 generate-callable-method ()
   "Returns a new function that serves as the executable function for a generic function.
 Compute-applicable-methods and subsequent steps like the primaries, befores, afters
 filtering could all be cached."
   (return
     (lambda ()
-      (let ((args-arr (to-array arguments))
-	    (applicable-methods
-	     (compute-applicable-methods arguments.callee
-					 args-arr)))
-	(if (== 0 applicable-methods.length)
-	    (progn
-	      (console.trace)
-	      (log (+ "No applicable methods for generic function call " arguments.callee.generic-name " with args") :error)
-	      (log args-arr :error)
-	      (log (args-arr.map class-of) :error)))
-;	    (throw "No applicable method for generic function call"))
-	(let ((primaries (applicable-methods.filter
-			  (lambda (meth) (return (== meth.qualifier "primary")))))
-	      (befores (applicable-methods.filter
-			(lambda (meth) (return (== meth.qualifier "before")))))
-	      (afters (applicable-methods.filter
-		       (lambda (meth) (return (== meth.qualifier "after"))))))
-	  ;(log (+ "Primaries: " primaries ", befores: " befores ", afters" afters))
-	  (return (apply-methods args-arr primaries befores afters)))))))
+      (let ((args (to-array arguments))
+	    (generic arguments.callee)
+	    (call-signature
+	     ((slot-value (args.map (lambda (arg)
+				      (defvar the-class (class-of arg))
+				      (return (or (and the-class (slot-value the-class 'psos-id))
+						  (typeof arg)))))
+			  'join)))
+	    (effective-method-combo
+	     (or (slot-value generic.cached-method-combo call-signature)
+		       (compute-effective-method-combination generic args))))
+;	(log (+ "caching method call to " generic.generic-name ": " call-signature))
+;	(log effective-method-combo)
+	(setf (slot-value generic.cached-method-combo call-signature)
+	      effective-method-combo)
+	(return (apply-std-method-combination effective-method-combo args))))))
 
 (defun2 ensure-method (concrete-generic specializer-list concrete-function qualifier)
   "A specializer list is a list of classes at the places where normal arguments
@@ -194,18 +215,23 @@ the second argument is the function to be called when this method is called"
 		      1)
 		  0)))))
 
+;(defun determine-applicable-methods (concrete-generic args)
+
+(defvar determine-applicable-methods compute-applicable-methods)
 (defun compute-applicable-methods (concrete-generic args)
   (let ((classes-of-args (args.map (lambda (arg) (return (class-of arg)))))
 	(applicable-methods
 	 (concrete-generic.generic-methods.filter
 	  (lambda (meth) (return (specializer-list-applicable?
 				  meth.specializer-list
-				  args))))))
-    (return (applicable-methods.sort
-	     (lambda (meth1 meth2)
-	       (return (specializer-list-specificity-comparator
-			classes-of-args
-			meth1.specializer-list meth2.specializer-list)))))))
+				  args)))))
+	(final-method-list
+	 (applicable-methods.sort
+	  (lambda (meth1 meth2)
+	    (return (specializer-list-specificity-comparator
+		     classes-of-args
+		     meth1.specializer-list meth2.specializer-list))))))
+    (return final-method-list)))
 		
 (defun specializer-list-applicable? (specializer-list method-arguments)
   (let ((method-classes (method-arguments.map class-of)))
