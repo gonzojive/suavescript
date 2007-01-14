@@ -36,13 +36,15 @@ The compiler can keep track of information that links parenscript to a lisp sess
 		   (documentation classdef-documentation))
     class-definition
     `(progn
-      (setf ,class-name (create-class 
-			 ,(js:js-to-string class-name)
-			 ,(if (null superclasses)
-			      nil
-			      `(array ,@superclasses))
-			 nil ; place-holder for class slots
-			 (create ,@(apply #'append options))))
+      (defvar ,class-name (ensure-class
+			   ,class-name
+			   (create
+			    :name ,(string-downcase (string class-name))
+			    :direct-superclasses ,(if (null superclasses)
+						      nil
+						      `(array ,@superclasses))
+			    :slot-definitions nil	 ; place-holder for class slots
+			    ,@(apply #'append options))))
       ,@(mapcar #'expand-psos-definition slot-definitions))))
   
 

@@ -31,7 +31,6 @@ module SailsXML
     def linebreak
       output_linebreaks? ? "\n" : ""
     end
-    
     JSON_ESCAPED = {
        "\010" =>  '\b',
        "\f" =>    '\f',
@@ -50,6 +49,7 @@ module SailsXML
     
     def initialize(js_out_var, strm = $stdout, last_root_index = nil)
       puts "Index of Last Tag: #{last_root_index}"
+      @tag_depth = 0
       @ostr = strm
       @jsvar = js_out_var
       @last_out_type = :jsexpr
@@ -102,6 +102,14 @@ module SailsXML
       idexpr[:options] = Hash.new
       idexpr[:options][:first] = "true" if @current_tag_index == 0
       idexpr[:options][:last] = "true" if @current_tag_index == @last_root_index
+      if @tag_depth == 0
+        additional_style = "visibility:hidden;"
+        if attrs["style"]
+          attrs["style"] += additional_style
+        else
+          attrs["style"] = additional_style
+        end
+      end
       attrs.each do |attr|
         case attr[0]
           when /^suaveField$/i
@@ -144,6 +152,7 @@ module SailsXML
       end
       @just_did_starttag = true
       @current_tag_index =  @current_tag_index +1
+      @tag_depth = @tag_depth + 1 #increase tag depth on encountering a start tag
     end
     def tag_end(name)
       
@@ -155,6 +164,7 @@ module SailsXML
       end
       @just_did_starttag = false
       jsout tagstr
+      @tag_depth = @tag_depth - 1 #decrease on end tag    
     end
     def text(value)
       generic_callback

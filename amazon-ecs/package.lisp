@@ -51,7 +51,8 @@
 
 ;;; CUSTOM
  parse-response-stream perform-amazon-search official-amazon-offer?
- item-official-amazon-offer item-authors))
+ item-official-amazon-offer item-authors perform-amazon-request
+ price-in-cents price-in-dollars))
 
 (in-package :org.iodb.amazon.ecs)
 

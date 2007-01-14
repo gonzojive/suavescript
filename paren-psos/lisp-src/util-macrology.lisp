@@ -57,6 +57,16 @@
 	  (let ((,var (aref ,arrvar ,idx)))
 	    ,@body))))))
 
+(defun parse-function-body (body)
+  (format t "parsing function body ~A~%" body)
+  (let* ((documentation
+	  (when (stringp (first body))
+	    (first body)))
+	 (body-forms (if documentation (rest body) body)))
+    (values
+     body-forms
+     documentation)))
+
 (defun parse-extended-function (lambda-list body &optional name)
   "Returns the effective body for a function with the given lambda-list and body."
   (declare (ignore name))
@@ -75,11 +85,12 @@
 				(append requireds optionals)))
 	     (effective-args (append arg-names
 				     (if keys? (list options-var))))
+	     (body-paren-forms (parse-function-body body)) ;remove documentation
 	     (body-with-defaulters
 	      (append (mapcar #'(lambda (default-pair)
 				  `(defaultf ,(car default-pair) ,(cdr default-pair)))
 			      defaulting-args)
-		      body))		    
+		      body-paren-forms))
 	     (effective-body
 	      (if rest?
 		  (append (list `(defvar ,rest ((slot-value (to-array arguments) 'slice)

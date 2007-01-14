@@ -11,4 +11,4 @@
   :components ((:file "package")
 	       (:file "ecs-response-model" :depends-on ("package" ))
 	       (:file "query-ecs" :depends-on ("ecs-response-model")))
-  :depends-on ("cl-ppcre" "trivial-http" "net-telent-date" "xml-mop" "parse-number"))
+  :depends-on ("cl-ppcre" "trivial-http" "red-browser" "net-telent-date" "xml-mop" "parse-number"))
