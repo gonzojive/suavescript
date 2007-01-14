@@ -61,6 +61,10 @@
   (parse-response-stream
    (third (trivial-http:http-get query-url))))
 
+(defun perform-amazon-request (query-url)
+  (parse-response-stream
+   (third (trivial-http:http-get query-url))))
+
 
 (defgeneric official-amazon-offer? (offer)
   (:documentation "Returns whether or not the offer is an official amazon offer."))
@@ -76,4 +80,4 @@
   (find-if #'ecs:official-amazon-offer?
 	   (and (ecs:item-offers item)
 		(ecs:offers (ecs:item-offers item)))))
-		
+

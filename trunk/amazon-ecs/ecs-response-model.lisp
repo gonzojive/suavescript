@@ -14,9 +14,25 @@
 (defmethod xml-mop:element-value ((element simple-text-element))
   (xml-mop:element-text element))
 
+(defun my-parse-date (ugly-date-string)
+  (labels ((parse-single-year (ugly-date-string)
+	     (cl-ppcre:register-groups-bind
+		 (single-year-string)
+		 ("^([0-9]{4,4})$" ugly-date-string)
+	       (if single-year-string
+		   (encode-universal-time 0 0 0 1 1 (parse-number:parse-number single-year-string))
+		   nil))))
+    (handler-case   (parse-time ugly-date-string)
+      (type-error ()
+	(let ((second-attempt (parse-single-year ugly-date-string)))
+	  (if second-attempt
+	      second-attempt
+	      (error "failed to parse date ~A" ugly-date-string)))))))
+
 (defclass date-element () () (:metaclass element-class))
 (defmethod xml-mop:element-value ((element date-element))
-  (parse-time (element-text element)))
+  (my-parse-date (element-text element)))
+
 (defclass yes-no-element (simple-text-element) () (:metaclass element-class))
 
 (defclass numerical-measurement-element (numerical-text-element)
@@ -175,12 +191,6 @@
   (:metaclass element-class)
   (:tags ("Request")))
 
-(defclass amazon-error ()
-  ((code :accessor code :initarg :code :initform nil)
-   (message :accessor message :initarg :message :initform ""))
-  (:metaclass element-class)
-  (:tags ("Request")))
-
 ;;; Amazon Item
 (defgeneric title (item-like-thing)
   (:documentation "Gives the title of an item-like thing, e.g. ItemAttributes or Item"))
@@ -195,10 +205,10 @@
    (asin :accessor item-asin :initform "" :initarg :asin :subelement (simple-text-element :alias "ASIN"))
    (detail-page-url :accessor item-detail-page-url :initform "" :initarg :detail-page-url
 		    :subelement (simple-text-element :alias "DetailPageURL"))
-   (sales-rank :subelement (numerical-text-element :alias "SalesRank"))
-   (large-image :subelement (image-element :alias "LargeImage") :accessor item-large-image)
-   (small-image :subelement (image-element :alias "SmallImage") :accessor item-small-image)
-   (medium-image :subelement (image-element :alias "MediumImage") :accessor item-medium-image)
+   (sales-rank :initform 0 :subelement (numerical-text-element :alias "SalesRank"))
+   (large-image :initform nil :subelement (image-element :alias "LargeImage") :accessor item-large-image)
+   (small-image :initform nil :subelement (image-element :alias "SmallImage") :accessor item-small-image)
+   (medium-image :initform nil :subelement (image-element :alias "MediumImage") :accessor item-medium-image)
    (image-sets :subelement (image-set-collection :alias "ImageSets") :accessor item-image-sets)
    (alternate-versions :accessor alternate-versions :initform nil :initarg :alternate-versions)
    (offer-summary :accessor offer-summary :initform () :initarg :offer-summary
@@ -283,6 +293,8 @@
 	 :subelement (simple-text-element :alias "ISBN"))
    (edition :accessor item-edition :initform nil
 	    :subelement (simple-text-element :alias "Edition"))
+   (format :accessor item-format :initform nil
+	    :subelement (simple-text-element :alias "format"))
    (publication-date :accessor item-publication-date :initform nil
 		     :subelement (date-element :alias "PublicationDate"))
    (release-date :accessor item-publication-date :initform nil

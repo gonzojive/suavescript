@@ -1,51 +1,55 @@
 (defvar standard-object -Object)
 
-(defun link-supers-to-subclass (direct-superclasses subclass)
+(defun2 link-supers-to-subclass (direct-superclasses subclass)
   (dolist (sclass direct-superclasses)
     (if sclass.direct-subclasses
 	(sclass.direct-subclasses.push subclass)
 	(setf sclass.direct-subclasses (array subclass)))))
 
-(defun2 std-class-make-instance (class-obj &key name direct-superclasses slot-defs documentation)
-  "Bootstrapping version of make-instance for creating a standard class."
-  )
-;(defun create-class (name direct-superclasses slots-ignored options)  
-  
-(defun ensure-class (class-function name direct-superclasses)
-  "Ensures that a class exists."
-  (return (create-class name direct-superclasses)))
+(defun2 generate-std-class-constructor ()
+  "This function returns a function that acts as a constructor for any class
+in the PSOS system.  This function does nothing if an init-arg 'only-allocate' is passed
+in as true.  This means that constructor is being called to allocate an instance of the
+class without instantiating it in any way, and is a necessary hack to make javascript
+prototyping function correctly.
 
-(defun ensure-class-superclasses (class-function direct-superclasses)
-  (setf direct-superclasses
-	(if (== 0 direct-superclasses.length)
-	    (array -object)
-	    direct-superclasses))
-  (setf class-function.direct-superclasses
-	direct-superclasses)
+A note on how javascript constructors work: a constructor can either modify the 'this' object
+ or return a new object that is the new instance.  The latter is what EVERY psos-class
+constructor does except for raw allocations."
+  (return
+    (lambda (init-args)
+      (if (not (and init-args init-args.only-allocate))
+	  (return (make-instance (class-of this) init-args))))))
+
+(defvar global-class-counter 0)
+(defun2 std-class-make-instance (metaclass &key name (direct-superclasses (array standard-object)) slot-defs documentation)
+  "Bootstrapping version of make-instance for creating a standard class.
+Note: slot-defs are currently ignored because slots are defined at compile-time."
+  (let ((class-obj (generate-std-class-constructor)))
+    (setf class-obj.class-name name)
+    (setf class-obj.psos-id (global-class-counter.to-string))
+    (incf global-class-counter)
+    (setf class-obj.direct-superclasses direct-superclasses)
+    (setf class-obj.to-string (lambda () (return (+ "<PSOS:Class " name ">"))))
+    (setf class-obj.constructor metaclass)
+    (std-finalize-inheritance class-obj)
+;    (log class-obj)
+    (return class-obj)))
+
+(defun2 std-class-finalize-inheritance (metaclass)
+  "Bootstrapping version of finalize-inheritance."
+  (setf class-obj.precedence-list
+	nil))
+;  (setf metaclass.precedence
+
+(defun2 std-finalize-inheritance (class-obj)
   ;add direct subclass information to all superclasses
-  (link-supers-to-subclass direct-superclasses class-function)
+  (link-supers-to-subclass class-obj.direct-superclasses class-obj)
   ;compute and store the class precedence list
-  (setf class-function.precedence-list
-	(compute-precedence-list class-function)))
-  
+  (setf class-obj.precedence-list (compute-precedence-list class-obj)))
 
-; this isn't pretty but it works
-(defun remove-duplicates (in-arr equality-lambda)
-  (defaultf equality-lambda (lambda (ob1 ob2) (return (=== ob1 ob2))))
-  (let ((working-array in-arr)
-	(out-arr (array)))
-    (while t
-      (if (== 0 working-array.length)
-	  (break)
-	  (let ((latest-unique-item (slot-value working-array 0)))
-	    (out-arr.push latest-unique-item)
-	    (setf working-array 
-		  (working-array.filter 
-		   (lambda (test-item)
-		     (return (not (equality-lambda test-item latest-unique-item)))))))))
-    (return out-arr)))
-
-(defun sort-class-precedence-list (class-list)
+(defun2 sort-class-precedence-list (class-list)
+  "Sorts the class precedence list with a topological sort. right now, it doesn't do anything."
   (return class-list))
 
 (defun collect-superclasses (the-class)
@@ -61,28 +65,66 @@
 	   (sort-class-precedence-list
 		      (collect-superclasses the-class)))))
 
-(defun apply-methods (args-arr primaries befores afters)
+(defun2 ensure-class (class-obj &key (metaclass standard-class))
+  "Ensures that a class exists that complies with the given options.  If it does not find
+a class it creates one, and if it finds one it attempts to redefine it.  This is sometimes not
+entirely possible (e.g. when a standard-funcallable-class is redefined as a standard class)."
+;  (log (+ "ensuring that the class exists " class-obj " " (== class-obj standard-class)))
+   ; detect the standard class for boot-strapping purposes
+  (return (if (== metaclass standard-class)
+	      (std-class-make-instance metaclass options)
+	      (make-instance metaclass options))))
+
+;; method dispatch functionality
+
+(defun2 ensure-generic (existing-version &key (generic-class standard-generic-function) name)
+  "Ensures that the existing generic function exists and conforms to the supplied options"
+  (return
+    (if (and existing-version existing-version.generic-methods)
+	existing-version
+	(if (== standard-generic-function generic-class)
+	    (std-generic-make-instance generic-class options)
+	    (make-instance generic-class options)))))
+
+(defun std-generic-add-method (generic method)
+  (generic.generic-methods.push method))
+
+(defun2 std-generic-make-instance (generic-class &key name)
+  "Makes a standard generic function."
+  (let ((concrete-function (generate-effective-method)))
+    (setf concrete-function.generic-methods (array))
+    (setf concrete-function.generic-name name)
+    (setf concrete-function.to-string
+	  (lambda () (return (+ "<PSOS:Generic " concrete-function.generic-name ">"))))
+    (return concrete-function)))
+
+(defun2 apply-methods (args-arr primaries befores afters)
+  "Applies a set of arguments to a bunch of primary, before, and after methods.  These
+primary, before, and after methods are passed in most-specific-first."
   (let ((ret-val undefined))
     (dolist (bmeth befores)
       (bmeth.apply nil args-arr))
     (let ((this-obj
 	   (create
 	    :primary-methods primaries
-	    :call-following-method (lambda ()
-				(if (== 0 this.primary-methods.length)
-				    (return undefined))
-				(return ((slot-value (this.primary-methods.shift) 'apply)
-					 this
-					 (if (== 0 arguments.length)
-					     args-arr
-					     arguments)))
-				 (log "call next method please!")))))
+	    :call-following-method
+	    (lambda ()
+	      (if (== 0 this.primary-methods.length)
+		  (return undefined))
+	      (return ((slot-value (this.primary-methods.shift) 'apply)
+		       this
+		       (if (== 0 arguments.length)
+			   args-arr
+			   arguments))) ))))
       (setf ret-val (this-obj.call-following-method)))
     (dolist2 (ameth afters :backward)
       (ameth.apply nil args-arr))
     (return ret-val)))
 
-(defun generate-effective-method ()
+(defun2 generate-effective-method ()
+  "Returns a new function that serves as the executable function for a generic function.
+Compute-applicable-methods and subsequent steps like the primaries, befores, afters
+filtering could all be cached."
   (return
     (lambda ()
       (let ((args-arr (to-array arguments))
@@ -104,41 +146,25 @@
 		       (lambda (meth) (return (== meth.qualifier "after"))))))
 	  ;(log (+ "Primaries: " primaries ", befores: " befores ", afters" afters))
 	  (return (apply-methods args-arr primaries befores afters)))))))
-	  
 
-(defun create-generic ()
-  (let ((concrete-function (generate-effective-method)))
-    (setf concrete-function.method-specializers (array))
-    (setf concrete-function.add-method
-	  (lambda (method)
-	    (concrete-function.method-specializers.push method)))
-    (return concrete-function)))
-
-(defun ensure-generic (existing-version name)
-  (defvar rv
-    (if (and existing-version existing-version.method-specializers)
-	existing-version
-	(create-generic)))
-  (setf rv.generic-name name)
-  (return rv))
-
-; a specializer list is a list of classes at the places where normal arguments
-; are normally passed.  So if a method specializes the second argument with
-; the class Ball, it the specializer list would be [null, ball, ...]
-; the second argument is the function to be called when this method is called
-(defun create-method (concrete-generic specializer-list concrete-function qualifier)
+(defun2 ensure-method (concrete-generic specializer-list concrete-function qualifier)
+  "A specializer list is a list of classes at the places where normal arguments
+are normally passed.  So if a method specializes the second argument with
+the class Ball, it the specializer list would be [null, ball, ...]
+the second argument is the function to be called when this method is called"
   (setf concrete-function.qualifier qualifier)
   (setf concrete-function.specializer-list specializer-list)
-  (concrete-generic.add-method concrete-function)
+  (std-generic-add-method concrete-generic concrete-function)
   (return concrete-function))
 
 (defun is-subclass-of (specializer test-class)
-  (return (if (== specializer test-class)
-	      t
-	      (and specializer.direct-subclasses
-		   (specializer.direct-subclasses.some
-		    (lambda (deeper-specializer)
-		      (return (is-subclass-of deeper-specializer test-class))))))))
+  (return
+    (if (== specializer test-class)
+	t
+	(and specializer.direct-subclasses
+	     (specializer.direct-subclasses.some
+	      (lambda (deeper-specializer)
+		(return (is-subclass-of deeper-specializer test-class))))))))
 
 (defun specializer-fits-class? (specializer the-class)
   ;(log (+ "Specializer / Class: " specializer " / " the-class))
@@ -171,7 +197,7 @@
 (defun compute-applicable-methods (concrete-generic args)
   (let ((classes-of-args (args.map (lambda (arg) (return (class-of arg)))))
 	(applicable-methods
-	 (concrete-generic.method-specializers.filter
+	 (concrete-generic.generic-methods.filter
 	  (lambda (meth) (return (specializer-list-applicable?
 				  meth.specializer-list
 				  args))))))
@@ -189,100 +215,47 @@
 		      method-classes)))
       (return
 	(fit-results.every
-	 (lambda (item) (return item)))))))
+	 (Lambda (item) (return item)))))))
+
+;; Bootstrapping
+; 1. Create the standard class.
+(defvar standard-class (std-class-make-instance
+			nil
+			(create :name "standard-class"
+				:direct-superclasses (array standard-object))))
+; 2. Set up the circular reference for standard-class's class, standard-class.
+(setf standard-class.constructor standard-class)
+
+; 3. Define built-in classes
+(defclass standard-generic-function ()
+  ()
+  (:documentation "The parent class of generic functions."))
+
+(defclass standard-method ()
+  ()
+  (:documentation "The parent class of generic functions."))
 
 ; built-in classes/generic functions
-(defmethod init-instance (any-obj)
-  (return (call-next-method)))
-;; NOTE: the interface for this function has changed.  it used to take a single argument
-;; that was the current 'this' object.  however, now it takes the glass to be initialized
-;; and the working 'this' o
-(defgeneric create-instance (some-class))
 
-;; this function returns a function that acts as a function for any class
-;; in the PSOS system. instantiation by the usre is handled through
-;; init-instance rather than through the constructor itself
-(defun create-class-constructor ()
-  (return
-    (lambda ()
-;      (log (+ "trying to create new class constructor of class " (class-of this) " / " (class-of (class-of this))))
-      ; make the arguments acceptable to init-instance by
-      ; making array of form [ this, arg0, ..., argN ]
-      (let ((args-array (to-array arguments))
-	    (obj-of-correct-type (create-instance (class-of this) args-array this)))
-	(init-instance.apply nil ((slot-value (array obj-of-correct-type) 'concat) args-array))
-	(return obj-of-correct-type)))))
+(defgeneric make-instance (of-class options)
+  (:documentation "Creates and initializes (by default) an instance of the given class."))
+(defgeneric allocate-instance (of-class options)
+  (:documentation "Allocates an instance without initializing it."))
+(defgeneric initialize-instance (instance options)
+  (:documentation "Called to initialize an instance with the given initargs.  Default behavior
+is to merge the initargs into the instance for slot instantiation."))
+(defvar init-instance initialize-instance)
 
-; define the standard-class, whose instances are all user-defined classes
-; and whose class is itself.  we avoid circularity by setting
-; standard-class equal to (new standard-class), which calls the constructor
-; and then replaces it with the newly created function, which is the function
-; that can be used to create user classes.
-(defun standard-class (name)
-  (let ((bootstrapped-constructor (create-class-constructor))
-	(bc bootstrapped-constructor))
-	  ; set properties expected of a standard class so that
-    (setf bc.class-name "standard-class")
-    (setf bc.direct-superclasses (array -object))
-    (setf bc.precedence-list (array -object))
-    (setf bc.to-string (lambda () (return "<PSOS:Class standard-class>")))
-     ; set the class of the standard class to the standard class
-    (setf bc.constructor bootstrapped-constructor)
-  ;returning a function from a constructor replaces the 'this' object
-  ;as the initialized object. 
-  (return bootstrapped-constructor)))
+(defmethod allocate-instance ((of-class standard-class) options)
+  (return (new (of-class (create :only-allocate t)))))
 
-; bootstrap standard class as described above
-(setf standard-class (new standard-class))
+(defmethod make-instance ((of-class standard-class) &optional (options (create)))
+  (let ((instance (allocate-instance.apply this arguments)))
+    (return (or (initialize-instance instance options)
+		instance))))
 
-;; this method is called to initialize a class.  It is called in the expansion
-;; of defclass.
-;(defmethod init-instance ((class-function standard-class) name direct-superclasses metaclass)
-;  (console.trace)
-;  (defvar asserted-class-obj (create-class-constructor))
-;  (defvar aso asserted-class-obj)
-;  (setf aso.class-name name)
-;  (setf aso.to-string (lambda () (return (+ "<Class  " name ">"))))
-;  (log aso)
-;  (ensure-class-superclasses aso (or direct-superclasses (array)))
-;  (defaultf metaclass (class-of class-function))
-;  (log (+ "previous constructor: " aso.constructor) :info 1000)
-;  (setf aso.constructor metaclass)
-;  (log (+ "initializing class " name " with metaclass " (class-of aso)) :info 1000)
-;  (return aso))
-
-(defmethod create-instance ((our-class standard-class) init-args (working-obj standard-class))
-;  (console.trace)
-  (defvar asserted-class-obj (create-class-constructor))
-  (setf asserted-class-obj.constructor our-class)
-;  (log "ASSERTED CLASS:")
-;  (log asserted-class-obj)
-  (return asserted-class-obj))
-
-(defmethod create-instance ((our-class standard-class) init-args working-obj)
-;  (log (+ "creating instance of " our-class.class-name "."))
-  (return (or working-obj (new our-class))))
-
-(defmethod init-instance ((class-function standard-class) name direct-superclasses slots-ignored options)
-  (defvar aso class-function)
-  (defvar metaclass (or options.metaclass (class-of class-function)))
-  (setf aso.class-name name)
-  (setf aso.to-string (lambda () (return (+ "<Class  " name ">"))))
-;  (log (+ "class-of-aso " (class-of aso)))
-  (ensure-class-superclasses aso (or direct-superclasses (array)))
-;  (defaultf metaclass (class-of class-function))
-;  (log (+ "previous constructor: " aso.constructor) :info 1000)
-  (setf aso.constructor metaclass)
-;  (log (+ "initializing class " name " with metaclass " (class-of aso)) :info 1000)
-  (return aso))
-
-;(defmethod create-instance :after (our-class standard-object) init-args &optional working-obj)
-
-
-;(defun2 create-instance ((our-class standard-class) &optional working-obj &rest init-args)
-;  (setf working-obj (or working-obj (new our-class)))
-;  (init-instance.apply nil ((slot-value (array working-obj) 'concat) init-args))
-;  (return working-obj))
+(defmethod initialize-instance ((instance standard-object) options)
+  (merge-into instance options))
 
 ;;; public interface follows ;;;
 ;;; select implementation from AMOP p.50
@@ -304,29 +277,13 @@
 (defmethod class-default-direct-superclasses ((class-obj standard-class))
   (return (array -object)))
 
-;(defmethod make-instance (class-obj standard-class)
-;  (return 
-
+(defmethod generic-name ((generic standard-generic-function))
+  (return generic.generic-name))
 
 (defun class-of (obj)
   (return (if obj
 	      (or obj.psos-metaclass obj.constructor)
 	      nil)))
-
-;(defmethod ensure-superclasses ((class-function standard-class) direct-superclasses)
-;  (ensure-class-superclasses class-function direct-superclasses))
-
-(defun create-class (name direct-superclasses slots-ignored options)
-;  (log (+ "le metaclass " metaclass))
-  (return (new (standard-class name direct-superclasses slots-ignored options))))
-
-;(defclass colorful-class (standard-class))
-
-;(defmethod init-instance :before ((class-obj colorful-class))
-;   (log "colorful init instance called"))
-
-;(new (standard-class "DogEater" (array)))
-;(new (colorful-class "RedColor" (array)))
 
 (defmethod class-default-direct-superclasses ((class-obj standard-class))
   (return (array -object)))

@@ -56,6 +56,25 @@
 (defaultf -array.prototype.some
 	  (lambda (fun)
 	    (return (some fun this))))
+
+; this isn't pretty but it works
+(defun2 remove-duplicates (in-arr equality-lambda)
+  "Removes duplicates in the given array using the given equality function, which defaults
+to a strict === comparison."
+  (defaultf equality-lambda (lambda (ob1 ob2) (return (=== ob1 ob2))))
+  (let ((working-array in-arr)
+	(out-arr (array)))
+    (while t
+      (if (== 0 working-array.length)
+	  (break)
+	  (let ((latest-unique-item (slot-value working-array 0)))
+	    (out-arr.push latest-unique-item)
+	    (setf working-array 
+		  (working-array.filter 
+		   (lambda (test-item)
+		     (return (not (equality-lambda test-item latest-unique-item)))))))))
+    (return out-arr)))
+
 ;;; DOM
 
 ;(defun2 first-child-elem (xml-elem)

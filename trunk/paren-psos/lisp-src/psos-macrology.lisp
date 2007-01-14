@@ -34,7 +34,9 @@ This doesn't handle multiple readers and writers."
 
 (js:defjsmacro defgeneric (formal-name &body options)
   (declare (ignore options))
-  `(defvar ,formal-name (ensure-generic ,formal-name ,(js:js-to-string formal-name))))
+  (let ((name-as-string (string-downcase (string formal-name))))
+    `(defvar ,formal-name (ensure-generic ,formal-name
+			   (create :name ,name-as-string)))))
 
 (defun parse-defjsmethod-args (args)
   (let* ((name (first args))
@@ -64,13 +66,14 @@ This doesn't handle multiple readers and writers."
 (js:defjsmacro defmethod (&rest args)
   (multiple-value-bind (formal-name method-qualifiers specializers argument-list body)
       (parse-defjsmethod-args args)
-    `(progn
-      (defvar ,formal-name (ensure-generic ,formal-name ,(js:js-to-string formal-name)))
-      (create-method ,formal-name (array ,@specializers)
-       (lambda2 ,argument-list
-	,@body)
-      ,(js:js-to-string (or (first method-qualifiers)
-			    :primary))))))
+    (let ((name-as-string (string-downcase (string formal-name))))
+      `(progn
+	(defvar ,formal-name (ensure-generic ,formal-name (create :name ,name-as-string)))
+	(ensure-method ,formal-name (array ,@specializers)
+	 (lambda2 ,argument-list
+	  ,@body)
+	 ,(js:js-to-string (or (first method-qualifiers)
+			       :primary)))))))
 
 (js:defjsmacro call-next-method (&rest args)
   `(this.call-following-method ,@args))

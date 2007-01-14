@@ -8,6 +8,16 @@
   (:documentation "Finds the element class underneath parent-element that
 corresponds to the tag string."))
 
+(defgeneric on-loaded-from-xml (element)
+  (:documentation "Called when the element has finished loading in the xml stream."))
+(defgeneric on-start-xml-load (element)
+  (:documentation "Called when the element has started to load in the xml stream.  After attribs have been assigned."))
+(defmethod on-start-xml-load ((element element))
+  (declare (ignore element)))
+
+(defmethod on-loaded-from-xml ((element element))
+  (declare (ignore element)))
+
 (defun descriptor-matches? (descriptor test-string)
   (let* ((matcher-string (descriptor-matcher descriptor))
 	 (result
@@ -192,11 +202,12 @@ of churning out objects."
 			(find-element-class-matching-tag allowed-element-class name))
 		    allowed-root-element-classes))
 	(if (null new-element-class)
-	    (restart-case (error "encountered unknown element ~A" name) ;(make-condition 'encountered-unknown-element))
+	    (restart-case (error "encountered unknown element ~A with parent element ~A" name parent-element) ;(make-condition 'encountered-unknown-element))
 	      (continue () seed))
 	    (let ((new-element (make-instance new-element-class)))
 					; assign attributes and the relevant place in the parent element
 	      (assign-attributes new-element attributes)
+	      (on-start-xml-load new-element)
 ;	      (when (not (null parent-slot))
 ;		(assign-child-element parent-element new-element parent-slot))
 	      ; append the new element to the element stack along with
@@ -242,7 +253,7 @@ the element classes allowed as root elements
 (defun active-handle-finish-element (name attributes parent-seed seed)
   "Called when the end of an element is encountered and we are in the process
 of churning out objects."
-  (declare (ignore attributes) (ignore name) (ignore parent-slot))
+  (declare (ignore attributes) (ignore name) (ignore parent-seed))
 ;  (format t "Parent seed: ~A~%Seed: ~A~%" parent-seed seed)
   (multiple-value-bind  (element-stack allowed-classes root-elements parent-slot-stack)
       (destructure-seed seed)
@@ -252,6 +263,7 @@ of churning out objects."
     (finalize-after-parse our-element)
     (when (and parent-element parent-slot-for-element)
       (assign-child-element parent-element our-element parent-slot-for-element))
+    (on-loaded-from-xml our-element)
     (generate-seed
      (rest element-stack)
      allowed-classes
