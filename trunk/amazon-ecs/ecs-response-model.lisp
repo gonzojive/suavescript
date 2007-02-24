@@ -165,8 +165,8 @@
 (defclass item-search-request ()
   ((keywords :accessor keywords :initform nil :initarg :keywords
 	     :subelement (simple-text-element :alias "Keywords"))
-   (merchantid :accessor merchant-id :initform nil :initarg :merchant-id
-	       :subelement (simple-text-element :alias "MerchantId"))
+   (merchant-id :accessor merchant-id :initform nil :initarg :merchant-id
+		:subelement (simple-text-element :alias "MerchantId"))
    (response-group :accessor request-response-group :initform nil
 	       :subelement (simple-text-element :alias "ResponseGroup"))
    (searchindex :accessor search-index :initform () :initarg :search-index
@@ -223,7 +223,10 @@
 
 (defclass image-set ()
   ((category :initform nil :accessor image-set-category :attribute "Category")
-   (large-image :subelement (image-element :alias "LargeImage") :accessor image-set-large-image)
+   (swatch-image :accessor image-set-swatch-image
+		 :subelement (image-element :alias "SwatchImage"))
+   (large-image  :accessor image-set-large-image
+		 :subelement (image-element :alias "LargeImage"))
    (small-image :subelement (image-element :alias "SmallImage") :accessor image-set-small-image)
    (medium-image :subelement (image-element :alias "MediumImage") :accessor image-set-item-medium-image))
   (:metaclass element-class)
@@ -354,7 +357,8 @@
 	     :subelement (merchant :alias "Merchant"))
    (offer-attributes :accessor offer-attributes :initform nil
 		     :subelement (offer-attributes :alias "OfferAttributes"))
-   (seller :accessor seller :initform nil :initarg :seller)
+   (seller :accessor offer-seller :initform nil :initarg :seller
+	    :subelement (seller :alias "Seller"))
    (offer-listing :accessor offer-listing :initform ()
 		  :subelement (offer-listing :alias "OfferListing")))
   (:metaclass element-class)
@@ -377,14 +381,15 @@
   (:documentation "Summary of offers for a particular item"))
 
 (defclass seller (vendor-like-mixin)
-  ((sellerid :accessor seller-id :initform nil :initarg :seller-id))
+  ((seller-id :accessor seller-id :initform nil :initarg :seller-id
+	      :subelement (simple-text-element :alias "SellerId")))
   (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
 
 (defclass offer-attributes ()
   ((condition :accessor offer-condition :initform nil
 	   :subelement (simple-text-element :alias "Condition"))
-   (conditionnote :accessor condition-note :initform nil
+   (condition-note :accessor condition-note :initform nil
 	   :subelement (simple-text-element :alias "ConditionNote"))
    (will-ship-expedited :accessor will-ship-expedited :initform nil
 	   :subelement (simple-text-element :alias "WillShipExpedited"))
@@ -395,8 +400,9 @@
   (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
 
+
 (defclass offer-listing ()
-  ((offerlistingid :accessor offer-listing-id :initform nil
+  ((offer-listing-id :accessor offer-listing-id :initform nil
 		   :subelement (simple-text-element :alias "OfferListingId"))
    (price :accessor price :initform nil
 	  :subelement (price-element :alias "Price"))
@@ -416,6 +422,21 @@
 				:subelement (yes-no-element :alias "IsEligibleForSuperSaverShipping")))
    (:metaclass element-class)
   (:documentation "Summary of offers for a particular item"))
+
+(macrolet ((def-forwarded-accessors (from-class relation &rest accessors)
+	       `(progn
+		 ,@(mapcar (lambda (accessor)
+			     `(defmethod ,accessor ((,from-class ,from-class))
+			       (,accessor (,relation ,from-class))))
+			   accessors))))
+  (def-forwarded-accessors
+      offer offer-attributes
+      offer-condition condition-note will-ship-expedited will-ship-international subcondition)
+  (def-forwarded-accessors
+      offer offer-listing
+    offer-listing-id price exchange-id quantity eligible-for-saver-shipping?
+    availability amount-saved))
+      
 
 (defclass editorial-review ()
   ((source :accessor review-source :initform nil

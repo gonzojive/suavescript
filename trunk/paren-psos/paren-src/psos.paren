@@ -22,7 +22,11 @@ constructor does except for raw allocations."
 	  (return (make-instance (class-of this) init-args))))))
 
 (defvar global-class-counter 0)
-(defun2 std-class-make-instance (metaclass &key name (direct-superclasses (array standard-object)) slot-defs documentation)
+(defun2 std-class-make-instance (metaclass &key name
+					   (direct-superclasses (array standard-object))
+					   slot-definitions
+					   documentation
+					   merge-prototypes)
   "Bootstrapping version of make-instance for creating a standard class.
 Note: slot-defs are currently ignored because slots are defined at compile-time."
   (let ((class-obj (generate-std-class-constructor)))
@@ -33,7 +37,10 @@ Note: slot-defs are currently ignored because slots are defined at compile-time.
     (setf class-obj.to-string (lambda () (return (+ "<PSOS:Class " name ">"))))
     (setf class-obj.constructor metaclass)
     (std-finalize-inheritance class-obj)
-;    (log class-obj)
+    (when merge-prototypes
+      (lispy-apply merge-into class-obj.prototype
+		   (class-obj.direct-superclasses.map
+		    (lambda (cls) (return cls.prototype)))))
     (return class-obj)))
 
 (defun2 std-class-finalize-inheritance (metaclass)
@@ -104,7 +111,6 @@ entirely possible (e.g. when a standard-funcallable-class is redefined as a stan
   "Applies a set of arguments to a bunch of primary, before, and after methods.  These
 primary, before, and after methods are passed in most-specific-first."
   (when (== 0 method-combo.primaries.length)
-    (console.trace)
     (log (+ "No applicable methods for generic function call " method-combo.generic.generic-name " with args") :error)
     (log args-arr :error)
     (log (args-arr.map class-of) :error))
@@ -168,7 +174,7 @@ filtering could all be cached."
 	      effective-method-combo)
 	(return (apply-std-method-combination effective-method-combo args))))))
 
-(defun2 ensure-method (concrete-generic specializer-list concrete-function qualifier)
+(defun2 ensure-method (concrete-generic specializer-list concrete-function &optional (qualifier "primary"))
   "A specializer list is a list of classes at the places where normal arguments
 are normally passed.  So if a method specializes the second argument with
 the class Ball, it the specializer list would be [null, ball, ...]
@@ -215,10 +221,9 @@ the second argument is the function to be called when this method is called"
 		      1)
 		  0)))))
 
-;(defun determine-applicable-methods (concrete-generic args)
-
-(defvar determine-applicable-methods compute-applicable-methods)
 (defun compute-applicable-methods (concrete-generic args)
+  "Computers the methods that are applicable to the given generic function when passed
+args.  Right now it looks through all the method specializers."
   (let ((classes-of-args (args.map (lambda (arg) (return (class-of arg)))))
 	(applicable-methods
 	 (concrete-generic.generic-methods.filter
@@ -270,6 +275,7 @@ the second argument is the function to be called when this method is called"
 (defgeneric initialize-instance (instance options)
   (:documentation "Called to initialize an instance with the given initargs.  Default behavior
 is to merge the initargs into the instance for slot instantiation."))
+
 (defvar init-instance initialize-instance)
 
 (defmethod allocate-instance ((of-class standard-class) options)

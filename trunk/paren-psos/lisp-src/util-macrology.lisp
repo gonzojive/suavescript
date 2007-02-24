@@ -1,7 +1,7 @@
 (defparameter *client-debug* t)
 (defun client-debug () *client-debug*)
-(js:defjsmacro alert (message)
-  `(log ,message :warn))
+;(js:defjsmacro alert (message)
+;  `(log ,message :warn))
 
 (js:defjsmacro effective-throw (error-obj)
   `(progn
@@ -15,7 +15,7 @@
 	   t)
 ;	   (or (> scalar-level 10000) (eql :error level)))
 ;	   (or (> scalar-level 101) (equal :error level) (equal :warn level)))
-      `(if console
+      `(if (and window.console console.firebug)
 	,(case level
 	  (:error `(console.error ,message))
 	  (:warn `(console.warn ,message))
@@ -58,7 +58,7 @@
 	    ,@body))))))
 
 (defun parse-function-body (body)
-  (format t "parsing function body ~A~%" body)
+;  (format t "parsing function body ~A~%" body)
   (let* ((documentation
 	  (when (stringp (first body))
 	    (first body)))
@@ -74,7 +74,7 @@
 	   (name-part (arg) (if (listp arg) (first arg) arg)))
     (multiple-value-bind (requireds optionals rest? rest keys? keys)
 	(paren-psos::parse-lambda-list lambda-list)
-      (format t "~A .." rest)
+;      (format t "~A .." rest)
       (let* ((options-var 'options)
 	     (defaulting-args ;an alist of arg -> default val
 		 (remove-if

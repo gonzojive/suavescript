@@ -1,5 +1,3 @@
-(defvar console console)
-
 (defun2 lispy-map (func arg1)
   (let ((arguments-arr (to-array arguments))
 	(result-arr (array)))
@@ -24,6 +22,14 @@
     (dolist (other-obj donating-objs)
       (doeach (prop other-obj)
 	      (setf (slot-value receiving-obj prop) (aref other-obj prop))))))
+
+(defun2 lispy-apply (func &rest rest)
+  "Similar to lisp's apply method.  Takes a predicate, an object that serves as the 'this'
+object for each function application, and then several arguments.  The last argument is
+appended to the ..."
+  (let ((std-args (rest.splice 0 (- rest.length 1)))
+	(last (aref rest (- rest.length 1))))
+    (func.apply this (if last (std-args.concat last) std-args))))
 
 (defun2 collect (fun arr)
   (let ((passing-members (array)))

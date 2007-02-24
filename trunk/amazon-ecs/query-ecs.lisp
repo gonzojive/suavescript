@@ -63,15 +63,22 @@
 
 (defun perform-amazon-request (query-url)
   (parse-response-stream
-   (third (trivial-http:http-get query-url))))
+   (dotimes (i 5)
+     (handler-case
+	 (return (third (trivial-http:http-get query-url)))
+       (error ()
+	 (format t "Error with request, retrying ~Ath time~%" i))))))
+
 
 
 (defgeneric official-amazon-offer? (offer)
   (:documentation "Returns whether or not the offer is an official amazon offer."))
 
 (defmethod official-amazon-offer? ((offer offer))
-  (string-equal (merchant-id (offer-merchant offer))
-		"ATVPDKIKX0DER"))
+  (let ((merchant (offer-merchant offer)))
+    (and merchant
+	 (string-equal (merchant-id merchant)
+		       "ATVPDKIKX0DER"))))
 
 (defgeneric item-official-amazon-offer  (item)
   (:documentation "Returns the first official amazon offer for the item."))

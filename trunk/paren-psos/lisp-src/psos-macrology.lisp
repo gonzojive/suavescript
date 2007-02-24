@@ -72,8 +72,8 @@ This doesn't handle multiple readers and writers."
 	(ensure-method ,formal-name (array ,@specializers)
 	 (lambda2 ,argument-list
 	  ,@body)
-	 ,(js:js-to-string (or (first method-qualifiers)
-			       :primary)))))))
+	 ,@(if (first method-qualifiers)
+	       (list (js:js-to-string (first method-qualifiers)))))))))
 
 (js:defjsmacro call-next-method (&rest args)
   `(this.call-following-method ,@args))

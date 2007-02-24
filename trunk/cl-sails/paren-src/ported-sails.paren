@@ -80,7 +80,8 @@ to which we are adding this subsail."))
   (writer (generate-html view)))
 
 (defmethod render-html :after ((view html-sail-view) writer &optional (doc document))
-  (setf view.dom-info (locate-dom-nodes doc)))
+  (setf view.dom-info (locate-dom-nodes doc))
+  (post-render v
 
 (defmethod locate-dom-nodes ((view html-sail-view) doc)
   (let ((rv (create)))

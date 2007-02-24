@@ -9,5 +9,6 @@
   :author "Red Daly <reddaly at gmail>"
   :license "GPL version 2: http://www.gnu.org/licenses/gpl.html"
   :components ((:module "lisp-src"
-			((:file "package"))))
+			:components ((:file "package")
+				     (:file "parser" :depends-on ("package")))))
   :depends-on ("cl-ppcre" "xml-mop" "parenscript"))

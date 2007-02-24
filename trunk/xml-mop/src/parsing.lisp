@@ -18,19 +18,31 @@ corresponds to the tag string."))
 (defmethod on-loaded-from-xml ((element element))
   (declare (ignore element)))
 
-(defun descriptor-matches? (descriptor test-string)
-  (let* ((matcher-string (descriptor-matcher descriptor))
+(defgeneric descriptor-matches-name? (descriptor test-string)
+  (:documentation "Determines if the given descriptor matches the test string.  Remember, a descriptor
+is a way to specify nodes in an XML document.  The test string is a node name, probably
+a tag or attribute."))
+
+(defmethod descriptor-matches-name? ((descriptor named-node-descriptor) test-string)
+  (let* ((matcher (descriptor-matcher descriptor))
 	 (result
-	  (if (descriptor-case-sensitive descriptor)
-	      (string-equal matcher-string test-string)
-	      (string-equal (string-upcase matcher-string)
-			    (string-upcase test-string)))))
-      result))
+	  (etypecase matcher
+	    (string (if (descriptor-case-sensitive descriptor)
+			(equal matcher test-string)
+			(equalp matcher test-string)))
+	    (keyword
+	     (ecase matcher
+	       (:anything t))))))
+
+    result))
+
+(defun descriptor-matches? (descriptor test-string)
+  (descriptor-matches-name? descriptor test-string))
 
 (defmethod find-allowed-element ((parent-element element) tag-name)
   (find-allowed-element (class-of parent-element) tag-name))
 
-(defun find-element-class-matching-tag (allowed-element-class tag-name)
+(defun determine-element-class-matching-tag (allowed-element-class tag-name)
   (labels ((find-matching-subclass (element-class)
 ;	     (format t "Searching class ~A for a matching tag descriptor~%" element-class) 
 	     (or (some #'(lambda (descriptor)
@@ -47,7 +59,6 @@ element (generally an element class) that matches the tag string.  This will
 check the slot definitions of the class for a slot with matching 'subelement'
 descriptor, and then check the allowed-subelements field of the class."))
 
-
 (defgeneric find-slot-matching-subelement (element tag-name)
   (:documentation "Finds a slot in an element class that matches the tag-name given"))
 (defmethod find-slot-matching-subelement ((non-parent-element-class t) tag-name)
@@ -59,7 +70,7 @@ descriptor, and then check the allowed-subelements field of the class."))
 	  #'(lambda (slot-definition)
 	      (some #'(lambda (slot-subelement-descriptor)
 			(let ((matching-class
-			       (or (find-element-class-matching-tag
+			       (or (determine-element-class-matching-tag
 				    (find-class (descriptor-element-type slot-subelement-descriptor))
 				    tag-name)
 				   (some #'(lambda (tag-alias-descriptor)
@@ -101,7 +112,7 @@ descriptor, and then check the allowed-subelements field of the class."))
   (some 
    #'(lambda (test-element-class)
        (some  #'(lambda (allowed-element-class)
-		  (find-element-class-matching-tag
+		  (determine-element-class-matching-tag
 		   allowed-element-class tag-name))
 
 	      (node-class-allowed-elements test-element-class)))
@@ -129,14 +140,32 @@ descriptor, and then check the allowed-subelements field of the class."))
   ())
 (defgeneric assign-attribute (element name attr-value) )
 (defmethod assign-attribute ((element element) name attr-value)
-  (let ((matching-slot-definition (find-slot-matching-attribute element name)))
+  (let* ((matching-slot-definition (find-slot-matching-attribute element name))
+	 (slot-is-collection? (and matching-slot-definition
+				   (find-if #'descriptor-multiple
+					    (element-slot-attributes matching-slot-definition)))))
     (if matching-slot-definition
 	(setf (slot-value-using-class (class-of element)
 				      element
 				      matching-slot-definition)
-	      attr-value)
+	      	(if (not slot-is-collection?)
+		    attr-value
+		    (append (slot-value-using-class (class-of element)
+				      element
+				      matching-slot-definition)
+			    (list attr-value))))
 	(restart-case (error (make-condition 'encountered-unmatched-attribute))
 	  (continue ())))))
+
+    (if 
+	(let ((current-slot-value (slot-value-using-class
+				   (class-of parent-element) parent-element  parent-slot)))
+	  (setf (slot-value-using-class
+		 (class-of parent-element) parent-element  parent-slot)
+		(append (list new-child-value) current-slot-value)))
+	(setf (slot-value-using-class
+	       (class-of parent-element) parent-element  parent-slot)
+	      new-child-value))))
 
 (defgeneric assign-attributes (element attributes) )
 (defmethod assign-attributes ((element element) attributes)
@@ -191,35 +220,41 @@ of the element."
 (defun active-handle-new-element (name attributes seed)
   "Called when an element is encountered and we are in the process
 of churning out objects."
-  (multiple-value-bind  (element-stack allowed-root-element-classes root-elements parent-slot-stack)
-      (destructure-seed seed)
-    (let ((parent-element (first element-stack)))
-      (multiple-value-bind (new-element-class parent-slot)
-	  (if parent-element ; if there are any elements on the stack
-	      (find-subelement-matching-tag (class-of parent-element)
-					    (string name))
-	      (some #'(lambda (allowed-element-class)
-			(find-element-class-matching-tag allowed-element-class name))
-		    allowed-root-element-classes))
-	(if (null new-element-class)
-	    (restart-case (error "encountered unknown element ~A with parent element ~A" name parent-element) ;(make-condition 'encountered-unknown-element))
-	      (continue () seed))
-	    (let ((new-element (make-instance new-element-class)))
+;  (format t "active handle new element ~A ~%" name)
+  (let ((name-string (string name)))
+    (multiple-value-bind  (element-stack allowed-root-element-classes root-elements parent-slot-stack)
+	(destructure-seed seed)
+      (let ((parent-element (first element-stack)))
+	(multiple-value-bind (new-element-class parent-slot)
+	    (if parent-element ; if there are any elements on the stack
+		(find-subelement-matching-tag (class-of parent-element) name-string)
+		(some #'(lambda (allowed-element-class)
+;			  (print name-string)
+;			  (format t "allowed element class for rat ~A: ~A / ~A~%"
+;				  name-string
+;				  allowed-element-class
+;				  (determine-element-class-matching-tag allowed-element-class name-string))
+			  (determine-element-class-matching-tag allowed-element-class name-string))
+		      allowed-root-element-classes))
+	  (if (null new-element-class)
+	      (restart-case (error "encountered unknown element ~A with parent element ~A" name-string parent-element) ;(make-condition 'encountered-unknown-element))
+		(continue () seed))
+	      (let ((new-element (make-instance new-element-class :tag name-string)))
 					; assign attributes and the relevant place in the parent element
-	      (assign-attributes new-element attributes)
-	      (on-start-xml-load new-element)
+		(assign-attributes new-element attributes)
+		(on-start-xml-load new-element)
 ;	      (when (not (null parent-slot))
 ;		(assign-child-element parent-element new-element parent-slot))
 	      ; append the new element to the element stack along with
 	      ; the slot it will be assigned to when it consumed
-	      (generate-seed (append (list new-element) element-stack)
-			     allowed-root-element-classes
-			     (if (null element-stack)
-				 (append root-elements (list new-element))
-				 root-elements)
-			     (if (not (null parent-slot))
-				 (append (list parent-slot) parent-slot-stack)
-				 parent-slot-stack))))))))
+		(generate-seed (append (list new-element) element-stack)
+			       allowed-root-element-classes
+			       (if (null element-stack)
+				   (append root-elements (list new-element))
+				   root-elements)
+			       (if (not (null parent-slot))
+				   (append (list parent-slot) parent-slot-stack)
+				   parent-slot-stack)))))))))
   
   
 (defun destructure-seed (seed)
@@ -294,14 +329,25 @@ of churning out objects."
 (defun parse-xml-stream (stream acceptable-root-classes)
   "This is where we interact with s-xml."
   (multiple-value-bind (element-stack allowed-root-classes root-elements)
-      (let ((terminal-seed
-	     (s-xml:start-parse-xml
-	      stream
-	      (make-instance 's-xml:xml-parser-state
-			     :new-element-hook 'active-handle-new-element
-			     :finish-element-hook 'active-handle-finish-element
-			     :text-hook 'active-handle-text
-			     :seed (generate-seed nil acceptable-root-classes nil nil)))))
+      (let* ((resolved-acceptable-root-classes
+	      (mapcar #'(lambda (class-specifier)
+			  (etypecase class-specifier
+			    (symbol (find-class class-specifier))
+			    (t class-specifier)))
+		      acceptable-root-classes))
+	     (terminal-seed
+	      (do ((seed (generate-seed nil resolved-acceptable-root-classes nil nil)
+			 (setf seed
+			       (s-xml:start-parse-xml
+				stream
+				(make-instance 's-xml:xml-parser-state
+					       :new-element-hook 'active-handle-new-element
+					       :finish-element-hook 'active-handle-finish-element
+					       :text-hook 'active-handle-text
+					       :seed seed)))))
+		  ;; reed until there are no longer any more elements in the stream
+		  ((eql :eof (peek-char #\< stream nil :eof))
+		   seed))))
 	(destructure-seed terminal-seed))
     (declare (ignore element-stack) (ignore allowed-root-classes))
     root-elements))
