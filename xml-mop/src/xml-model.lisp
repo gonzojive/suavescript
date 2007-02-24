@@ -31,6 +31,9 @@ for the document."))
 from a cased or uncased string to a handler class or function.  Several descriptors may map to a 
 single element."))
 
+;(defmethod shared-initialize :after ((descriptor named-node-descriptor) initargs &key &allow-other-keys)
+;  (format t "********Initializing descriptor ~A~%" (descriptor-matcher descriptor)))
+
 (defclass subelement-descriptor ()
   ((element-type :initform nil :initarg :element-type :reader descriptor-element-type)
    (multiple :initform nil :initarg :multiple :reader descriptor-multiple)
@@ -103,20 +106,26 @@ descriptor definition."
 ;  (format t "Resolving descriptor definition ~A~%" descriptor-definition)
   ; determine if this is a single definition or many definitions
   ; this is a stupidly complicated logical statement, sorry
-  (let ((many (and (listp descriptor-definition)
-		   (or (stringp (second descriptor-definition))
-		       (and (not (null (second descriptor-definition)))
-			    (listp (second descriptor-definition)))))))
+  (labels ((notempty-listp (list) (and (listp list) (not (null list)))))
+    (let ((many (and (listp descriptor-definition)
+		     (or (stringp (second descriptor-definition))
+			 (notempty-listp (second descriptor-definition))))))
+
     (if many
 	(mapcar #'resolve-node-descriptor-definition
 		descriptor-definition)
 	(when (not (null descriptor-definition))
-	  (if (stringp descriptor-definition)
-	      (make-instance 'named-node-descriptor
-			     :matcher descriptor-definition)
-	      (apply #'make-instance 'named-node-descriptor
-		     :matcher (first descriptor-definition)
-		     (rest descriptor-definition)))))))
+	  (if (or (stringp descriptor-definition)
+		   (keywordp descriptor-definition))
+	      (progn
+;		(format t "making effective descriptor definition from ~A~%" descriptor-definition)
+		(make-instance 'named-node-descriptor
+			       :matcher descriptor-definition))
+	      (when (notempty-listp descriptor-definition)
+;		(format t "making effective descriptor definition from ~A~%" descriptor-definition)
+		(apply #'make-instance 'named-node-descriptor
+		       :matcher (first descriptor-definition)
+		       (rest descriptor-definition)))))))))
 	
 ;; Initialize the effective slot.
 (defmethod compute-effective-slot-definition ((class element-class) slot-name direct-slot-definitions)
@@ -131,15 +140,18 @@ descriptor definition."
 	   (remove-if #'null
 		      (ensure-list
 		       (resolve-node-descriptor-definition
-			(ensure-list
-			 (element-slot-attribute (first direct-slot-definitions)))))))
-
+			(remove-if #'null
+				   (ensure-list
+				    (element-slot-attribute
+				     (first direct-slot-definitions))))))))
 	  (resolved-subelement-definitions
 	   (remove-if #'null
 		      (ensure-list
 		       (resolve-subelement-descriptor-definition
 			(element-slot-subelement (first direct-slot-definitions)))))))
 ;      (format t "Resolved effective slot: ~A~%" (element-slot-subelements effective-slotd))
+;      (format t "Resolved attribute definitions for ~A slot: ~A~%"
+;	      slot-name resolved-attribute-definitions)
       (setf (element-slot-attributes effective-slotd)
 	    resolved-attribute-definitions)
       (setf (element-slot-subelements effective-slotd)
@@ -153,12 +165,12 @@ descriptor definition."
   t)
 
 (defclass element ()
-  ((text :initarg :text :initform nil :accessor element-text))
+  ((text :initarg :text :initform nil :accessor element-text)
+   (tag-string :initarg :tag :initform nil :accessor element-tag-string))
   (:metaclass element-class))
 
 ;; the following code gives objects with element-class as their metaclass
 ;; a default superclass of element
-
 (defmethod initialize-instance :around
   ((class element-class) &rest initargs  &key direct-superclasses tags)
   (declare (dynamic-extent initargs))
