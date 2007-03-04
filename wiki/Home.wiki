@@ -1,5 +1,8 @@
-#summary SuaveScript Home: come here first!
+#summary SuaveScript Home
 SuaveScript is a collection of tools help people write better software for the web.  The project right now has two principle modules, Sails and PSOS.
+
+This project has *MOVED* to [http://common-lisp.net/project/suave/ ]
+
 
 =Sails=
 
@@ -7,5 +10,4 @@ The [Sails] framework for writing GUI components.  An HTML 'sail' is created wit
 
 =Parenscript Object System=
 The [Parenscript] Object System is a CLOS-like object system for class- and generic function-based object-oriented programming in web browsers.
-
 
